@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState, useCallback } from "react";
-import {  Activity,  AlignCenter,  AlignLeft,  AlignRight,  AlertTriangle,  ArrowDownRight,  ArrowLeft,  ArrowRight,  ArrowRightLeft,  ArrowUpRight,  Archive,  Banknote,  BarChart3,  Bell,  BookOpen,  Boxes,  Building2,  CalendarDays,  Check,  CheckCircle2,  ChevronDown,  ChevronLeft,  ChevronRight,  CircleHelp,  CircleDollarSign,  Clock3,  Coffee,  Copy,  Download,  Edit3,  ExternalLink,  Eye,  EyeOff,  Filter,  ImagePlus,  Grid2X2,  GripVertical,  Landmark,  LayoutDashboard,  List,  Loader2,  LockKeyhole,  LogOut,  Mail,  MapPin,  Menu,  Minus,  MoreHorizontal,  Package,  Percent,  Pencil,  Plus,  QrCode,  Receipt,  RefreshCw,  RotateCcw,  Search,  ScanLine,  Settings2,  ShieldCheck,  ShoppingCart,  Smartphone,  SunMedium,  Moon,  Sparkles,  Store,  Tag,  ToggleLeft,  ToggleRight,  Trash2,  TrendingUp,  Truck,  Upload,  UserPlus,  UserRound,  Users,  WalletCards,  X,} from "lucide-react";
+import {  Activity,  AlignCenter,  AlignLeft,  AlignRight,  AlertTriangle,  ArrowDownRight,  ArrowLeft,  ArrowRight,  ArrowRightLeft,  ArrowUpRight,  Archive,  Banknote,  BarChart3,  Bell,  BookOpen,  Boxes,  Building2,  CalendarDays,  Check,  CheckCircle2,  ChevronDown,  ChevronLeft,  ChevronRight,  CircleHelp,  CircleDollarSign,  Clock3,  Coffee,  Copy,  Download,  Edit3,  ExternalLink,  Eye,  EyeOff,  Filter,  ImagePlus,  Grid2X2,  GripVertical,  Landmark,  LayoutDashboard,  List,  Loader2,  LockKeyhole,  LogOut,  Mail,  MapPin,  Menu,  MessageSquare,  Minus,  MoreHorizontal,  Package,  Percent,  Pencil,  Plus,  QrCode,  Receipt,  RefreshCw,  RotateCcw,  Search,  ScanLine,  Send,  Settings2,  ShieldCheck,  ShoppingCart,  Smartphone,  SunMedium,  Moon,  Sparkles,  Store,  Tag,  ToggleLeft,  ToggleRight,  Trash2,  TrendingUp,  Truck,  Upload,  UserPlus,  UserRound,  Users,  WalletCards,  X,} from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { api, APIError } from "./api";
 import { RichBody as SupportRichBody, RichTextEditor as SupportRichEditor, plainTextToHtml as supportPlainTextToHtml } from "./components/RichTextEditor";
@@ -1000,12 +1000,445 @@ function AdminSupportTicketDetail({ token, notify, ticketId, onBack }) {
   </div>;
 }
 
+const SUPPORT_CHAT_BADGE = {
+  ai: "bg-[#f0efff] text-[#5b4be3]",
+  waiting: "bg-[#fff6df] text-[#ad7d1c]",
+  live: "bg-[#edf9e4] text-[#4f8b32]",
+  resolved: "bg-[#f1f1f5] text-[#686974]",
+  closed: "bg-[#f1f1f5] text-[#686974]",
+};
+
+const SUPPORT_CHAT_LABEL = { ai: "Assistant", waiting: "Waiting", live: "Live", resolved: "Resolved", closed: "Closed" };
+
+// The support stream uses the same event framing as the merchant inbox, so the
+// parser is local and dependency-free: frames end at a blank line and may arrive
+// split across chunks.
+function parseAdminSse(buffer) {
+  const events = [];
+  let rest = buffer;
+  let boundary = rest.indexOf("\n\n");
+  while (boundary !== -1) {
+    const frame = rest.slice(0, boundary);
+    rest = rest.slice(boundary + 2);
+    let data = "";
+    for (const rawLine of frame.split("\n")) {
+      const line = rawLine.replace(/\r$/, "");
+      if (line.startsWith("data:")) data += (data ? "\n" : "") + line.slice(5).replace(/^ /, "");
+    }
+    if (data) {
+      try { events.push(JSON.parse(data)); } catch { /* ignore a malformed frame */ }
+    }
+    boundary = rest.indexOf("\n\n");
+  }
+  return { events, rest };
+}
+
+function AdminSupportChat({ token, notify, initialConversationId }) {
+  const [rows, setRows] = useState([]);
+  const [filter, setFilter] = useState("all");
+  const [selectedId, setSelectedId] = useState(initialConversationId || null);
+  const [thread, setThread] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [reply, setReply] = useState("");
+  const [notes, setNotes] = useState("");
+  const [notesOpen, setNotesOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiNotice, setAiNotice] = useState("");
+  const [notesBusy, setNotesBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [threadLoading, setThreadLoading] = useState(false);
+  const cursorRef = useRef(0);
+  const scrollRef = useRef(null);
+  const threadRef = useRef(null);
+  threadRef.current = thread;
+
+  const scrollToEnd = () => {
+    window.requestAnimationFrame(() => {
+      if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    });
+  };
+
+  const loadList = useCallback(async () => {
+    if (!token) return [];
+    const params = filter === "mine"
+      ? { assigned: "me" }
+      : ["waiting", "live", "ai"].includes(filter)
+        ? { status: filter }
+        : {};
+    try {
+      const data = await api.adminSupportChatConversations(token, params);
+      setRows(Array.isArray(data) ? data : []);
+      return data || [];
+    } catch (requestError) {
+      setError(requestError.message || "Could not load support conversations");
+      return [];
+    }
+  }, [token, filter]);
+
+  const openThread = useCallback(async (id) => {
+    if (!token || !id) return;
+    setSelectedId(id);
+    setThreadLoading(true);
+    setError("");
+    setAiNotice("");
+    try {
+      const detail = await api.adminSupportChatThread(token, id);
+      setThread(detail);
+      setMessages(detail.messages || []);
+      setNotes(detail.internal_notes || "");
+      cursorRef.current = (detail.messages || []).reduce((max, message) => Math.max(max, message.seq || 0), 0);
+      setNotesOpen(false);
+      scrollToEnd();
+    } catch (requestError) {
+      setError(requestError.message || "Could not open the conversation");
+    } finally {
+      setThreadLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      setLoading(true);
+      const data = await loadList();
+      if (!active) return;
+      setLoading(false);
+      const target = initialConversationId || (selectedId && data.some((row) => row.id === selectedId) ? selectedId : null) || data[0]?.id;
+      if (target) openThread(target);
+      // The first open is a one-time decision; the list and filters drive later ones.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    })();
+    return () => { active = false; };
+  }, [loadList]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (!document.hidden) loadList();
+    }, 8000);
+    return () => window.clearInterval(timer);
+  }, [loadList]);
+
+  useEffect(() => {
+    if (!token || !selectedId) return undefined;
+    let active = true;
+    let retry = null;
+    let controller = null;
+
+    const connect = async () => {
+      controller = new AbortController();
+      try {
+        const response = await fetch(
+          `${api.baseUrl}/admin/support/chat/conversations/${selectedId}/stream?after_seq=${cursorRef.current || 0}`,
+          { headers: { Authorization: `Bearer ${token}` }, credentials: "include", signal: controller.signal },
+        );
+        if (!response.ok || !response.body) return;
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done || !active) break;
+          buffer += decoder.decode(value, { stream: true });
+          const parsed = parseAdminSse(buffer);
+          buffer = parsed.rest;
+          for (const payload of parsed.events) {
+            const message = payload?.message;
+            if (!message) continue;
+            cursorRef.current = Math.max(cursorRef.current, message.seq || 0);
+            setMessages((current) => {
+              const byId = new Map(current.map((item) => [item.id, item]));
+              byId.set(message.id, message);
+              return Array.from(byId.values()).sort((a, b) => a.seq - b.seq);
+            });
+            setThread((current) => current ? {
+              ...current,
+              last_message_at: message.created_at,
+              last_message_preview: message.body || message.attachment?.name || current.last_message_preview,
+              last_message_author: message.author_type,
+            } : current);
+            if (message.author_type === "merchant") {
+              api.adminSupportChatMarkRead(token, selectedId).catch(() => {});
+              loadList();
+            }
+            scrollToEnd();
+          }
+        }
+      } catch {
+        /* reconnect below while this thread is still open */
+      }
+      if (active) retry = window.setTimeout(connect, 1500);
+    };
+    connect();
+    return () => {
+      active = false;
+      controller?.abort();
+      if (retry) window.clearTimeout(retry);
+    };
+  }, [token, selectedId, loadList]);
+
+  const setStatus = async (status) => {
+    if (!thread || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const updated = await api.adminUpdateSupportChat(token, thread.id, { status });
+      setThread((current) => current ? { ...current, ...updated } : current);
+      notify?.(`${thread.reference} ${status === "live" ? "taken over" : status}`);
+      await loadList();
+    } catch (requestError) {
+      setError(requestError.message || "Could not update the conversation");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const togglePriority = async () => {
+    if (!thread || busy) return;
+    setBusy(true);
+    try {
+      const updated = await api.adminUpdateSupportChat(token, thread.id, { priority: !thread.priority });
+      setThread((current) => current ? { ...current, ...updated } : current);
+      await loadList();
+    } catch (requestError) {
+      setError(requestError.message || "Could not update priority");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveNotes = async () => {
+    if (!thread || notesBusy) return;
+    setNotesBusy(true);
+    try {
+      const updated = await api.adminUpdateSupportChat(token, thread.id, { internal_notes: notes.trim() || null });
+      setThread((current) => current ? { ...current, ...updated, internal_notes: notes.trim() || null } : current);
+      notify?.("Internal note saved");
+    } catch (requestError) {
+      setError(requestError.message || "Could not save the note");
+    } finally {
+      setNotesBusy(false);
+    }
+  };
+
+  const suggest = async () => {
+    if (!thread || aiBusy) return;
+    setAiBusy(true);
+    setError("");
+    setAiNotice("");
+    try {
+      const result = await api.adminSupportChatAiSuggest(token, thread.id);
+      setReply(result.body || "");
+      setAiNotice(
+        result.matched
+          ? "Drafted from the knowledge base. Review before sending."
+          : "No guide matched this question. Review carefully, or add a guide under Knowledge base.",
+      );
+    } catch (requestError) {
+      setError(requestError.message || "The assistant could not draft a reply");
+    } finally {
+      setAiBusy(false);
+    }
+  };
+
+  const sendReply = async () => {
+    const text = reply.trim();
+    if (!thread || !text || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const result = await api.adminSupportChatReply(token, thread.id, { body: text });
+      setMessages((current) => {
+        const byId = new Map(current.map((item) => [item.id, item]));
+        byId.set(result.message.id, result.message);
+        return Array.from(byId.values()).sort((a, b) => a.seq - b.seq);
+      });
+      setThread((current) => current ? { ...current, ...result.conversation } : current);
+      setReply("");
+      setAiNotice("");
+      notify?.("Reply sent to the merchant");
+      scrollToEnd();
+      await loadList();
+    } catch (requestError) {
+      setError(requestError.message || "Could not send the reply");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const meta = SUPPORT_CHAT_LABEL[thread?.status] || "Assistant";
+  const metaClass = SUPPORT_CHAT_BADGE[thread?.status] || SUPPORT_CHAT_BADGE.ai;
+
+  return <div className="overflow-hidden rounded-2xl border border-[#e9e9ef] bg-white">
+    <div className="grid min-h-[620px] xl:grid-cols-[340px_minmax(0,1fr)]">
+      <aside className="border-b border-[#eeeeF2] xl:border-b-0 xl:border-r">
+        <div className="border-b border-[#eeeeF2] px-4 py-3">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <p className="text-sm font-extrabold">Live chat</p>
+              <p className="mt-0.5 text-[10px] text-[#92939d]">{rows.length} conversation{rows.length === 1 ? "" : "s"}</p>
+            </div>
+            <button type="button" onClick={() => loadList()} className="rounded-lg border border-[#e4e4eb] px-2 py-1 text-[10px] font-bold text-[#62636d]">Refresh</button>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-1">
+            {[["all", "All"], ["waiting", "Waiting"], ["live", "Live"], ["ai", "Assistant"], ["mine", "Mine"]].map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setFilter(value)}
+                className={`rounded-lg px-2 py-1 text-[10px] font-bold ${filter === value ? "bg-[#6957f5] text-white" : "border border-[#e4e4eb] text-[#62636d] hover:border-[#bdb9ee]"}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="max-h-[560px] overflow-y-auto">
+          {loading ? <p className="p-4 text-xs text-[#92939d]">Loading...</p>
+            : rows.length === 0
+              ? <p className="p-4 text-xs text-[#92939d]">No conversations in this view.</p>
+              : rows.map((row) => (
+                <button
+                  key={row.id}
+                  type="button"
+                  onClick={() => openThread(row.id)}
+                  className={`flex w-full flex-col gap-1 border-b border-[#f0f0f3] px-4 py-3 text-left transition hover:bg-[#fafafd] ${selectedId === row.id ? "bg-[#f7f5ff]" : ""}`}
+                >
+                  <span className="flex items-center gap-2">
+                    {row.priority && <span className="shrink-0 text-[10px] text-[#c2564b]" title="Priority">●</span>}
+                    <span className="min-w-0 flex-1 truncate text-xs font-bold">{row.subject || row.last_message_preview || row.reference}</span>
+                    {row.unread_count > 0 && <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-[#6957f5] px-1 text-[9px] font-extrabold text-white">{row.unread_count > 9 ? "9+" : row.unread_count}</span>}
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold ${SUPPORT_CHAT_BADGE[row.status] || SUPPORT_CHAT_BADGE.ai}`}>{SUPPORT_CHAT_LABEL[row.status] || row.status}</span>
+                    <span className="truncate text-[10px] text-[#92939d]">{row.company_name || "Workspace"}{row.store_name ? ` · ${row.store_name}` : ""}</span>
+                  </span>
+                  <span className="truncate text-[10px] text-[#a3a4ad]">{row.last_message_preview || "No messages yet"}</span>
+                </button>
+              ))}
+        </div>
+      </aside>
+
+      <section className="flex min-w-0 flex-col">
+        {!selectedId ? <div className="flex h-full items-center justify-center p-8 text-center">
+          <div>
+            <MessageSquare size={24} className="mx-auto text-[#b0b1ba]" />
+            <p className="mt-2 text-sm font-bold">Pick a conversation</p>
+            <p className="mt-1 text-xs text-[#92939d]">The merchant's assistant history is in the thread.</p>
+          </div>
+        </div> : <>
+          <header className="border-b border-[#eeeeF2] px-4 py-3">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="flex items-center gap-2 text-sm font-extrabold">
+                  <span className="truncate">{thread?.subject || thread?.last_message_preview || thread?.reference || "Conversation"}</span>
+                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold ${metaClass}`}>{meta}</span>
+                  {thread?.priority ? <span className="shrink-0 text-[9px] font-bold text-[#c2564b]">Priority</span> : null}
+                </p>
+                <p className="mt-0.5 text-[10px] text-[#92939d]">
+                  {thread?.reference} · {thread?.company_name || "Workspace"}{thread?.store_name ? ` · ${thread.store_name}` : ""}
+                  {thread?.merchant_name ? ` · ${thread.merchant_name}` : ""}{thread?.merchant_email ? ` (${thread.merchant_email})` : ""}
+                  {thread?.assigned_admin_name ? ` · assigned to ${thread.assigned_admin_name}` : ""}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button type="button" disabled={busy} onClick={() => setStatus("live")} className="rounded-lg border border-[#dcd9fb] bg-[#f7f5ff] px-2.5 py-1.5 text-[10px] font-bold text-[#5b4be3] disabled:opacity-50">Take over</button>
+                <button type="button" disabled={busy} onClick={togglePriority} className="rounded-lg border border-[#e4e4eb] px-2.5 py-1.5 text-[10px] font-bold text-[#62636d] disabled:opacity-50">{thread?.priority ? "Unprioritise" : "Prioritise"}</button>
+                <button type="button" disabled={busy} onClick={() => setNotesOpen((value) => !value)} className="rounded-lg border border-[#e4e4eb] px-2.5 py-1.5 text-[10px] font-bold text-[#62636d] disabled:opacity-50">Notes</button>
+                {["resolved", "closed"].includes(thread?.status)
+                  ? <button type="button" disabled={busy} onClick={() => setStatus("live")} className="rounded-lg border border-[#e4e4eb] px-2.5 py-1.5 text-[10px] font-bold text-[#62636d] disabled:opacity-50">Reopen</button>
+                  : <button type="button" disabled={busy} onClick={() => setStatus("resolved")} className="rounded-lg border border-[#e4e4eb] px-2.5 py-1.5 text-[10px] font-bold text-[#62636d] disabled:opacity-50">Resolve</button>}
+              </div>
+            </div>
+            {notesOpen && <div className="mt-2 rounded-xl border border-[#eeeeF2] bg-[#fafafd] p-2.5">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-[#92939d]">Internal note (never shown to the merchant)</p>
+              <textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={2} className="mt-1 w-full rounded-lg border border-[#e4e4eb] bg-white p-2 text-[11px] outline-none" />
+              <div className="mt-1 flex justify-end"><button type="button" disabled={notesBusy} onClick={saveNotes} className="rounded-lg bg-[#17181c] px-2.5 py-1 text-[10px] font-bold text-white disabled:opacity-50">{notesBusy ? "Saving..." : "Save note"}</button></div>
+            </div>}
+          </header>
+
+          {thread?.status === "waiting" && <p className="border-b border-[#eeeeF2] bg-[#fffaf0] px-4 py-2 text-[11px] font-semibold text-[#8a661a]">The merchant asked for a human. Join and reply below.</p>}
+          {thread?.status === "ai" && <p className="border-b border-[#eeeeF2] bg-[#faf9ff] px-4 py-2 text-[11px] font-semibold text-[#5b4be3]">The assistant is answering. You can take over at any time.</p>}
+
+          {error && <p className="mx-4 mt-2 rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2 text-[11px] text-[#c2564b]">{error}</p>}
+
+          <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-4 py-4" style={{ maxHeight: "430px" }}>
+            {threadLoading && messages.length === 0 ? <p className="text-xs text-[#92939d]">Loading conversation...</p> : null}
+            {messages.map((message) => (
+              <div key={message.id || message.seq} className={`flex ${message.author_type === "merchant" ? "justify-start" : message.author_type === "agent" ? "justify-end" : "justify-start"}`}>
+                <div className="max-w-[85%]">
+                  <p className={`mb-1 text-[9px] font-bold uppercase tracking-wide ${
+                    message.author_type === "merchant" ? "text-[#62636d]" : message.author_type === "agent" ? "text-[#4f8b32]" : message.author_type === "assistant" ? "text-[#6957f5]" : "text-[#92939d]"
+                  }`}>
+                    {message.author_type === "merchant" ? (thread?.merchant_name || message.author_name || "Merchant")
+                      : message.author_type === "agent" ? (message.author_name || "Support")
+                        : message.author_type === "assistant" ? "Assistant"
+                          : "System"}
+                    <span className="ml-1 font-normal normal-case text-[#b0b1ba]">{new Date(message.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                  </p>
+                  <div className={`rounded-2xl px-3.5 py-2.5 text-[12px] leading-5 ${
+                    message.author_type === "agent" ? "bg-[#edf9e4] text-[#31471f]"
+                      : message.author_type === "assistant" ? "bg-[#f4f4f8] text-[#454652]"
+                        : message.author_type === "system" ? "bg-[#fafafd] text-[#777883]"
+                          : "bg-[#f0efff] text-[#3f3a6b]"
+                  }`}>
+                    {message.body ? <p className="whitespace-pre-wrap">{message.body}</p> : null}
+                    {message.attachment?.url ? <a href={message.attachment.url} target="_blank" rel="noreferrer" className="mt-1 block text-[11px] font-bold underline">{message.attachment.name || "Attachment"}</a> : null}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="border-t border-[#eeeeF2] p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-[10px] text-[#92939d]">Replies arrive in the merchant's Support chat and trigger their in-app bell.</p>
+              <button type="button" disabled={aiBusy || busy} onClick={suggest} className="inline-flex items-center gap-1.5 rounded-lg border border-[#dcd9fb] bg-[#f7f5ff] px-2.5 py-1.5 text-[10px] font-bold text-[#5b4be3] disabled:opacity-50">{aiBusy ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />} Suggest from assistant</button>
+            </div>
+            {aiNotice && <p className="mt-2 rounded-xl border border-[#e6e5f3] bg-[#faf9ff] px-3 py-2 text-[11px] text-[#5d5e68]">{aiNotice}</p>}
+            <div className="mt-2 flex items-end gap-2">
+              <textarea
+                value={reply}
+                onChange={(event) => setReply(event.target.value)}
+                onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); sendReply(); } }}
+                rows={2}
+                placeholder="Reply to the merchant..."
+                className="min-h-[40px] w-full resize-none rounded-xl border border-[#e4e4eb] bg-white px-3 py-2 text-xs outline-none focus:border-[#bdb9ee]"
+              />
+              <button type="button" disabled={busy || !reply.trim()} onClick={sendReply} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#6957f5] text-white disabled:opacity-50" aria-label="Send reply">
+                {busy ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
+              </button>
+            </div>
+          </div>
+        </>}
+      </section>
+    </div>
+  </div>;
+}
+
 function AdminSupportInsights({ token, notify }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [windowDays, setWindowDays] = useState(30);
   const [activeTicketId, setActiveTicketId] = useState(null);
+  // Live chat is the front door; the assistant insights and email tickets stay
+  // one tab away. A Telegram handoff link seeds ?conversation=<id>.
+  const [tab, setTab] = useState("chat");
+  const [initialConversationId] = useState(() => new URLSearchParams(window.location.search).get("conversation") || "");
+  const tabs = <div className="flex items-center gap-1 rounded-xl bg-[#f4f4f8] p-1">
+    {[["chat", "Live chat"], ["insights", "Tickets & insights"]].map(([id, label]) => (
+      <button
+        key={id}
+        type="button"
+        onClick={() => setTab(id)}
+        className={`rounded-lg px-3 py-1.5 text-[11px] font-bold transition ${tab === id ? "bg-white text-[#303139] shadow-sm" : "text-[#777883] hover:text-[#303139]"}`}
+      >
+        {label}
+      </button>
+    ))}
+  </div>;
   const load = async () => {
     setLoading(true);
     setError("");
@@ -1027,15 +1460,28 @@ function AdminSupportInsights({ token, notify }) {
     </div>
   );
   if (activeTicketId) return <AdminSupportTicketDetail token={token} notify={notify} ticketId={activeTicketId} onBack={() => setActiveTicketId(null)} />;
+  if (tab === "chat") return <div className="mx-auto max-w-[1460px] p-5 lg:p-8">
+    <div className="flex flex-wrap items-end justify-between gap-4">
+      <div>
+        <h2 className="text-2xl font-extrabold tracking-[-.05em]">Support</h2>
+        <p className="mt-1 text-sm text-[#898a95]">Live merchant conversations, with the assistant's history in the same thread.</p>
+      </div>
+      {tabs}
+    </div>
+    <div className="mt-5"><AdminSupportChat token={token} notify={notify} initialConversationId={initialConversationId} /></div>
+  </div>;
   return <div className="mx-auto max-w-[1460px] p-5 lg:p-8">
     <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
       <div>
         <h2 className="text-2xl font-extrabold tracking-[-.05em]">Support insights</h2>
         <p className="mt-1 text-sm text-[#898a95]">How the in-app assistant answers questions, and where it falls short.</p>
       </div>
-      <select value={windowDays} onChange={(event) => setWindowDays(Number(event.target.value))} className="h-10 rounded-xl border border-[#e4e4eb] bg-white px-3 text-xs font-semibold text-[#4f5059]">
-        {[7, 30, 90, 365].map((days) => <option key={days} value={days}>Last {days} days</option>)}
-      </select>
+      <div className="flex flex-wrap items-center gap-2">
+        {tabs}
+        <select value={windowDays} onChange={(event) => setWindowDays(Number(event.target.value))} className="h-10 rounded-xl border border-[#e4e4eb] bg-white px-3 text-xs font-semibold text-[#4f5059]">
+          {[7, 30, 90, 365].map((days) => <option key={days} value={days}>Last {days} days</option>)}
+        </select>
+      </div>
     </div>
     {error && <p className="mt-5 rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b]">{error}</p>}
     {loading ? <p className="mt-6 text-sm text-[#92939d]">Loading...</p> : data && <>

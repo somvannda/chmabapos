@@ -269,6 +269,22 @@ export const api = {
   adminMailingSuppressions: (token, limit = 100) => request(`/admin/mailing/suppressions?limit=${limit}`, { token }),
   adminDeleteMailingSuppression: (token, id) => request(`/admin/mailing/suppressions/${id}`, { method: "DELETE", token }),
   adminSupportInsights: (token, windowDays = 30) => request(`/admin/support/insights?window_days=${windowDays}`, { token }),
+  adminSupportChatConversations: (token, params = {}) => {
+    const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
+    return request(`/admin/support/chat/conversations${query.toString() ? `?${query}` : ""}`, { token });
+  },
+  adminSupportChatUnread: (token) => request("/admin/support/chat/unread-count", { token }),
+  adminSupportChatThread: (token, id, params = {}) => {
+    const query = new URLSearchParams(Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== ""));
+    return request(`/admin/support/chat/conversations/${id}${query.toString() ? `?${query}` : ""}`, { token });
+  },
+  adminSupportChatReply: (token, id, body) => request(`/admin/support/chat/conversations/${id}/messages`, { ...json("POST", body), token }),
+  adminUpdateSupportChat: (token, id, body) => request(`/admin/support/chat/conversations/${id}`, { ...json("PATCH", body), token }),
+  adminSupportChatMarkRead: (token, id) => request(`/admin/support/chat/conversations/${id}/read`, { ...json("POST", {}), token }),
+  adminSupportChatTyping: (token, id) => request(`/admin/support/chat/conversations/${id}/typing`, { ...json("POST", {}), token }),
+  adminSupportChatTypingState: (token, id) => request(`/admin/support/chat/conversations/${id}/typing`, { token }),
+  adminSupportChatAiSuggest: (token, id) => request(`/admin/support/chat/conversations/${id}/ai-suggest`, { method: "POST", token }),
+  adminSupportChatUpload: (token, id, file) => { const form = new FormData(); form.append("file", file); form.append("conversation_id", id); return request("/admin/support/chat/upload", { method: "POST", body: form, token }); },
   adminHelpArticles: (token) => request("/admin/help/articles", { token }),
   adminCreateHelpArticle: (token, body) => request("/admin/help/articles", { ...json("POST", body), token }),
   adminUpdateHelpArticle: (token, id, body) => request(`/admin/help/articles/${id}`, { ...json("PATCH", body), token }),
