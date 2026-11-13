@@ -4,6 +4,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { api, APIError } from "./api";
 import { RichBody as SupportRichBody, RichTextEditor as SupportRichEditor, plainTextToHtml as supportPlainTextToHtml } from "./components/RichTextEditor";
 import { PromptDialog } from "./components/PromptDialog";
+import { linkify } from "./lib/linkify";
 import { adminPath, parseRoute, userPath, usernameFor, viewFromPath } from "./routing";
 import { Listbox, Transition } from "@headlessui/react";
 const STORAGE_KEY = "chmaba-theme";
@@ -1021,7 +1022,7 @@ function AdminSupportTicketDetail({ token, notify, ticketId, onBack }) {
     <div className="mt-5 space-y-3">
       <div className="rounded-xl bg-[#f0efff] p-4 text-xs text-[#3f3a6b]">
         <p className="mb-1 text-[9px] font-bold uppercase tracking-wide text-[#92939d]">Merchant</p>
-        <p className="whitespace-pre-wrap">{detail.question}</p>
+        <LinkifiedText text={detail.question} className="whitespace-pre-wrap" />
         <SupportAttachmentStrip items={detail.attachments} />
       </div>
       {(detail.messages || []).map((message) => (
@@ -1084,6 +1085,12 @@ function parseAdminSse(buffer) {
     boundary = rest.indexOf("\n\n");
   }
   return { events, rest };
+}
+
+function LinkifiedText({ text, className = "" }) {
+  return <p className={className}>{linkify(text).map((part, index) => part.type === "link"
+    ? <a key={`${index}-${part.href}`} href={part.href} target="_blank" rel="noreferrer" className="font-semibold underline underline-offset-2 break-all">{part.value}</a>
+    : part.value)}</p>;
 }
 
 function AdminSupportNewChat({ token, onClose, onStarted }) {
@@ -1798,7 +1805,7 @@ function AdminSupportChat({ token, notify, initialConversationId }) {
                         : message.author_type === "system" ? "bg-[#fafafd] text-[#777883]"
                           : "bg-[#f0efff] text-[#3f3a6b]"
                   }`}>
-                    {message.body ? <p className="whitespace-pre-wrap">{message.body}</p> : null}
+                    {message.body ? <LinkifiedText text={message.body} className="whitespace-pre-wrap break-words" /> : null}
                     {message.attachment?.url ? <a href={message.attachment.url} target="_blank" rel="noreferrer" className="mt-1 block text-[11px] font-bold underline">{message.attachment.name || "Attachment"}</a> : null}
                   </div>
                 </div>
