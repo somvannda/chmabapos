@@ -4313,7 +4313,7 @@ function AdminMailing({ token, user, notify, onNavigate }) {
     setError("");
     try {
       const result = await api.adminMailingDraft(token, {
-        instruction: `Edit only the email body. Keep the subject exactly as: "${compose.subject}". Keep the same meaning, existing links and calls to action. ${direction}. Return the full email with that same subject. Current body:\n${htmlToPlainText(compose.body_html)}`,
+        instruction: `Edit only the email body. Keep the subject exactly as: "${compose.subject}". Keep the same meaning, existing links, calls to action and merge tokens exactly as written. ${direction}. Return the full email with that same subject. Current body HTML:\n${compose.body_html}`,
         audience,
       });
       setCompose((current) => ({ ...current, body_html: result.body_html }));
