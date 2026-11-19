@@ -73,6 +73,9 @@ struct RegisterRequest: Codable, Sendable {
 struct RegisterResponse: Codable, Sendable {
     let user: UserRead
     let message: String
+    /// Opaque handle for this pending code. The client sends it back with the
+    /// emailed code so verification is bound to this account.
+    let verificationId: String?
     /// Dev convenience: the API returns the verification token directly when mail
     /// is not configured, so sign-up can be completed without a mail catcher.
     let devVerificationToken: String?
@@ -81,6 +84,7 @@ struct RegisterResponse: Codable, Sendable {
 
 struct VerifyEmailRequest: Codable, Sendable {
     let token: String
+    let verificationId: String?
 }
 
 // MARK: - Catalog

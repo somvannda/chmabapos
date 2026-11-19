@@ -28,8 +28,11 @@ async def _register_and_verify(client: AsyncClient, email: str, password: str = 
         json={"email": email, "full_name": "Hardening Test", "password": password},
     )
     assert registered.status_code == 201, registered.text
-    code = registered.json()["dev_verification_token"]
-    verified = await client.post("/api/v1/auth/verify-email", json={"token": code})
+    payload = registered.json()
+    verified = await client.post(
+        "/api/v1/auth/verify-email",
+        json={"token": payload["dev_verification_token"], "verification_id": payload["verification_id"]},
+    )
     assert verified.status_code == 200, verified.text
 
 
@@ -67,6 +70,40 @@ async def test_register_rejects_reserved_domain_in_production(monkeypatch) -> No
 
     assert response.status_code == 400
     assert "permanent email" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_verification_code_is_bound_to_its_id() -> None:
+    email = f"binding-{uuid.uuid4().hex[:8]}@example.com"
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            registered = await client.post(
+                "/api/v1/auth/register",
+                json={"email": email, "full_name": "Binding Test", "password": "strong-password"},
+            )
+            assert registered.status_code == 201, registered.text
+            payload = registered.json()
+            wrong = await client.post(
+                "/api/v1/auth/verify-email",
+                json={"token": payload["dev_verification_token"], "verification_id": str(uuid.uuid4())},
+            )
+            assert wrong.status_code == 400
+            right = await client.post(
+                "/api/v1/auth/verify-email",
+                json={"token": payload["dev_verification_token"], "verification_id": payload["verification_id"]},
+            )
+            assert right.status_code == 200, right.text
+    finally:
+        await _delete_user(email)
+
+
+@pytest.mark.asyncio
+async def test_verification_id_is_required_in_production(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "environment", "production")
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post("/api/v1/auth/verify-email", json={"token": "123456"})
+    assert response.status_code == 400
+    assert "verification_id" in response.json()["detail"]
 
 
 @pytest.mark.asyncio

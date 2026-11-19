@@ -48,7 +48,7 @@ const json = (method, body) => ({ method, body: JSON.stringify(body) });
 export const api = {
   baseUrl: API_BASE_URL,
   register: (body) => request("/auth/register", json("POST", body)),
-  verifyEmail: (token) => request("/auth/verify-email", json("POST", { token })),
+  verifyEmail: (token, verificationId) => request("/auth/verify-email", json("POST", { token, verification_id: verificationId || undefined })),
   resendVerification: (email) => request("/auth/resend-verification", json("POST", { email })),
   login: (body) => request("/auth/login", json("POST", body)),
   refreshSession,

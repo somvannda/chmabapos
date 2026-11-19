@@ -1208,12 +1208,14 @@ async def health(db: AsyncSession = Depends(get_db)) -> HealthResponse:
     return HealthResponse(status="ok", service=settings.app_name, version="v1", database="connected", dependencies=dependencies)
 
 
-async def issue_verification_code(db: AsyncSession, user_id: UUID) -> str:
+async def issue_verification_code(db: AsyncSession, user_id: UUID) -> tuple[str, UUID]:
     """Issue a fresh email confirmation code, retiring any previous one.
 
-    Codes are six digits (one in a million) and ``token_hash`` is globally
-    unique, so two users can draw the same code. Retry instead of letting the
-    insert violate the unique constraint.
+    Returns ``(code, verification_id)``. The id is the row's UUID: the client
+    sends it with the code so the check is bound to this account instead of
+    searching the whole six-digit space. Codes are six digits and
+    ``token_hash`` is globally unique, so two users can draw the same code;
+    retry instead of letting the insert violate the unique constraint.
     """
     await db.execute(
         EmailVerificationToken.__table__.update()
@@ -1225,8 +1227,10 @@ async def issue_verification_code(db: AsyncSession, user_id: UUID) -> str:
         digest = hash_opaque_token(code)
         exists = (await db.execute(select(EmailVerificationToken.id).where(EmailVerificationToken.token_hash == digest))).scalar_one_or_none()
         if exists is None:
-            db.add(EmailVerificationToken(user_id=user_id, token_hash=digest, expires_at=now_utc() + timedelta(hours=24)))
-            return code
+            token = EmailVerificationToken(user_id=user_id, token_hash=digest, expires_at=now_utc() + timedelta(hours=24))
+            db.add(token)
+            await db.flush()
+            return code, token.id
     raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Could not issue a confirmation code. Please try again.")
 
 
@@ -1262,7 +1266,7 @@ async def register(payload: RegisterRequest, request: Request, db: AsyncSession 
     db.add(user)
     await db.flush()
     await contacts_service.link_contact_for_user(db, user.email, user.id)
-    code = await issue_verification_code(db, user.id)
+    code, verification_id = await issue_verification_code(db, user.id)
     await record_activity(db, "user.registered", user=user, details={"full_name": user.full_name})
     await db.commit()
     await db.refresh(user)
@@ -1270,6 +1274,7 @@ async def register(payload: RegisterRequest, request: Request, db: AsyncSession 
     return RegisterResponse(
         user=user_read(user),
         message="Check your email to confirm your account",
+        verification_id=verification_id,
         dev_verification_token=code if settings.environment in {"development", "test"} else None,
         mailhog_url=settings.mailhog_ui_url if settings.environment in {"development", "test"} else None,
     )
@@ -1288,11 +1293,12 @@ async def resend_verification(payload: ResendVerificationRequest, db: AsyncSessi
     if not user or user.is_email_verified:
         # Stay vague so the endpoint cannot be used to probe which emails exist.
         return ResendVerificationResponse(message="If this email belongs to an unverified Chmaba account, a new code is on its way.")
-    code = await issue_verification_code(db, user.id)
+    code, verification_id = await issue_verification_code(db, user.id)
     await db.commit()
     await send_verification_email(user.email, code)
     return ResendVerificationResponse(
         message="A new confirmation code was sent to your email",
+        verification_id=verification_id,
         dev_verification_token=code if settings.environment in {"development", "test"} else None,
         mailhog_url=settings.mailhog_ui_url if settings.environment in {"development", "test"} else None,
     )
@@ -1300,7 +1306,28 @@ async def resend_verification(payload: ResendVerificationRequest, db: AsyncSessi
 
 @router.post("/auth/verify-email", response_model=UserRead, tags=["auth"])
 async def verify_email(payload: VerifyEmailRequest, db: AsyncSession = Depends(get_db)) -> UserRead:
-    result = await db.execute(select(EmailVerificationToken).where(EmailVerificationToken.token_hash == hash_opaque_token(payload.token)))
+    query = select(EmailVerificationToken).where(EmailVerificationToken.token_hash == hash_opaque_token(payload.token))
+    attempt_key = None
+    if payload.verification_id is not None:
+        # Bind the attempt to the exact pending row issued to this signup.
+        query = query.where(EmailVerificationToken.id == payload.verification_id)
+        # Even a bound six-digit code is guessable if one id can be tried
+        # indefinitely. Five attempts per fifteen minutes makes a self-service
+        # brute force impractical, while a real typo still fits.
+        attempt_key = f"verify-token:{payload.verification_id}"
+        if not support_service.check_rate_limit(attempt_key, limit=5, window_seconds=15 * 60):
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Too many confirmation attempts. Request a new code and try again.",
+            )
+    elif settings.environment == "production":
+        # A code alone must never be enough in production: the six-digit space is
+        # small, and a global lookup lets a bot walk it.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="verification_id is required",
+        )
+    result = await db.execute(query)
     verification = result.scalar_one_or_none()
     if not verification or verification.used_at or verification.expires_at < now_utc():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Verification token is invalid or expired")
@@ -1310,6 +1337,8 @@ async def verify_email(payload: VerifyEmailRequest, db: AsyncSession = Depends(g
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     user.is_email_verified = True
     verification.used_at = now_utc()
+    if attempt_key:
+        support_service.clear_rate_limit(attempt_key)
     await record_activity(db, "user.email_verified", user=user)
     await db.commit()
     await db.refresh(user)

@@ -41824,6 +41824,18 @@
             "type": "string",
             "title": "Message"
           },
+          "verification_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verification Id"
+          },
           "dev_verification_token": {
             "anyOf": [
               {
@@ -42174,6 +42186,18 @@
           "message": {
             "type": "string",
             "title": "Message"
+          },
+          "verification_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verification Id"
           },
           "dev_verification_token": {
             "anyOf": [
@@ -49351,6 +49375,18 @@
             "maxLength": 64,
             "minLength": 6,
             "title": "Token"
+          },
+          "verification_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verification Id"
           }
         },
         "type": "object",
