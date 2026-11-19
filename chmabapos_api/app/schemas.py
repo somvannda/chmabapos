@@ -89,12 +89,19 @@ class RegisterRequest(BaseModel):
 class RegisterResponse(APIModel):
     user: "UserRead"
     message: str
+    # Opaque handle for the pending code. The client sends it back with the
+    # emailed code so verification is bound to this account, not to the global
+    # six-digit space.
+    verification_id: UUID | None = None
     dev_verification_token: str | None = None
     mailhog_url: str | None = None
 
 
 class VerifyEmailRequest(BaseModel):
     token: str = Field(min_length=6, max_length=64)
+    # Required in production. Optional at the schema level only so the existing
+    # test/dev suites can still exercise the legacy path.
+    verification_id: UUID | None = None
 
 
 class ResendVerificationRequest(BaseModel):
@@ -104,6 +111,7 @@ class ResendVerificationRequest(BaseModel):
 
 class ResendVerificationResponse(APIModel):
     message: str
+    verification_id: UUID | None = None
     dev_verification_token: str | None = None
     mailhog_url: str | None = None
 

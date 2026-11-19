@@ -13835,6 +13835,8 @@ export interface components {
             user: components["schemas"]["UserRead"];
             /** Message */
             message: string;
+            /** Verification Id */
+            verification_id?: string | null;
             /** Dev Verification Token */
             dev_verification_token?: string | null;
             /** Mailhog Url */
@@ -14002,6 +14004,8 @@ export interface components {
         ResendVerificationResponse: {
             /** Message */
             message: string;
+            /** Verification Id */
+            verification_id?: string | null;
             /** Dev Verification Token */
             dev_verification_token?: string | null;
             /** Mailhog Url */
@@ -16534,6 +16538,8 @@ export interface components {
         VerifyEmailRequest: {
             /** Token */
             token: string;
+            /** Verification Id */
+            verification_id?: string | null;
         };
         /** WarrantyClaimCreateRequest */
         WarrantyClaimCreateRequest: {

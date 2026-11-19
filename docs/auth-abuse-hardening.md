@@ -248,8 +248,10 @@ docker compose -f deploy/docker-compose.prod.yml exec -T api printenv ENVIRONMEN
 ```
 
 Must be `production`. Also verify `TURNSTILE_SECRET_KEY` is non-blank and
-`VITE_TURNSTILE_SITE_KEY` was present in the web build. As of the `843929c`
-deploy both keys are still blank, so the widget is not rendered.
+`VITE_TURNSTILE_SITE_KEY` was present in the web build. On 19 Nov the site and
+secret keys were installed in the server-only `.env`, the front was rebuilt and
+the API recreated. A tokenless login/reset now returns `400`, while a real
+solved token is accepted.
 
 ### 4.6 Origin allowlist (applied 19 Nov)
 
@@ -300,25 +302,23 @@ superseded and removed; the allowlist now rejects every non-Cloudflare source.
 
 ### P1 — before the next production signup window
 
-- [ ] **Turnstile on**: set `TURNSTILE_SECRET_KEY` and
-      `VITE_TURNSTILE_SITE_KEY` in `deploy/.env`, rebuild `front`, recreate
-      `api`. Confirm the widget appears and a token-less register is rejected.
-- [ ] **Bind the verification code to the account**. Preferred design: the
-      register response returns a random `verification_id` (128-bit) alongside
-      the user; `POST /auth/verify-email` sends `{verification_id, token}` and
-      the lookup is `id + token_hash`, not hash alone. This keeps six digits for
-      the UI and removes the global code space. It is a cross-client change:
-      `apps/web`, `apps/admin`, `apps/android`, `apps/ios`, the e2e helpers and
-      `packages/api-client`. Ship the optional field first, then require it
-      after the oldest supported client sends it; keep the 10/min verify limit
-      during the transition. The alternative is eight digits plus matching
-      six-to-eight-box UI, which is simpler but still global.
+- [x] **Turnstile on**: site and secret keys are server-only; the web and
+      admin widgets are baked in, and `admin.chmaba.com` is in the widget's
+      hostname list. Tokenless login/reset returns `400`; a real solved token is
+      accepted.
+- [x] **Bind the verification code to the account**. Register/resend return a
+      `verification_id`; `POST /auth/verify-email` sends
+      `{verification_id, token}` and the lookup is `id + token_hash`. Production
+      rejects a request without the id; a bound id allows five attempts per
+      fifteen minutes. Web, admin, Android, iOS, e2e and the API client are
+      updated. In dev/test the legacy token-only path remains so the suites can
+      exercise it.
 - [ ] **Move the limiter to shared storage** (Redis/Postgres) before running
       more than one API worker. `app.services.support.check_rate_limit` is
       in-process today, so limits multiply by worker count.
-- [ ] **Limit hard by origin**: firewall the VPS to Cloudflare's ranges (or use a
-      Tunnel). `CF-Connecting-IP` is only trustworthy when the origin cannot be
-      reached directly.
+- [x] **Limit hard by origin**: the 80/443 allowlist is applied and persisted
+      (§4.6). `CF-Connecting-IP` is now trustworthy because direct access is
+      dropped.
 - [ ] **Mandatory TOTP 2FA** for `admin`/`super_admin`, with recovery codes.
       There is no MFA implementation in this repository today.
 - [ ] **Log failed sign-ins** (email hash + IP + user-agent, never the password)
@@ -337,9 +337,9 @@ superseded and removed; the allowlist now rejects every non-Cloudflare source.
 - [ ] Alert when one IP/domain creates more than N accounts per hour, when
       verification failures spike, when an admin reset is requested, or when an
       admin signs in from a new country/ASN.
-- [ ] Add tests for Turnstile enforcement, verification-code binding, unverified
-      account expiry, invitation caps and the production `dev_verification_token`
-      guard.
+- [x] Tests for Turnstile enforcement and verification-code binding.
+- [ ] Tests for unverified-account expiry, invitation caps and the production
+      `dev_verification_token` guard.
 - [ ] Add a production smoke test that asserts
       `ENVIRONMENT=production` and Turnstile configured.
 

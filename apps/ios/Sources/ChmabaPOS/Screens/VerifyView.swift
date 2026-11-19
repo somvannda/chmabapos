@@ -11,6 +11,7 @@ import SwiftUI
 struct VerifyView: View {
     let email: String
     let devToken: String?
+    let verificationId: String?
     let onVerified: () -> Void
     let onUseDifferentEmail: () -> Void
 
@@ -156,7 +157,7 @@ struct VerifyView: View {
         Task {
             do {
                 let _: UserRead = try await APIClient.shared.post(
-                    "auth/verify-email", body: VerifyEmailRequest(token: code), as: UserRead.self
+                    "auth/verify-email", body: VerifyEmailRequest(token: code, verificationId: verificationId), as: UserRead.self
                 )
                 busy = false
                 onVerified()

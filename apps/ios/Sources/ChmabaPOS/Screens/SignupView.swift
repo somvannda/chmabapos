@@ -5,8 +5,9 @@ import SwiftUI
 struct SignupView: View {
     let onSignIn: () -> Void
     /// Hands the credentials up so the flow can sign in once the email is confirmed,
-    /// plus the dev verification token when the API returns one.
-    let onRegistered: (_ email: String, _ password: String, _ devToken: String?) -> Void
+    /// plus the dev verification token and the pending verification id when the API
+    /// returns them.
+    let onRegistered: (_ email: String, _ password: String, _ devToken: String?, _ verificationId: String?) -> Void
     /// Same treatment as LoginView: the providers are shown but not wired, and saying
     /// so beats a button that does nothing.
     var onProviderUnavailable: (String) -> Void = { _ in }
@@ -175,7 +176,8 @@ struct SignupView: View {
                 onRegistered(
                     email.trimmingCharacters(in: .whitespaces).lowercased(),
                     password,
-                    registered.devVerificationToken
+                    registered.devVerificationToken,
+                    registered.verificationId
                 )
             } catch let apiError as APIError {
                 busy = false

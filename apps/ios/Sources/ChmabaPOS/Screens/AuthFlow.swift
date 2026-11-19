@@ -22,6 +22,7 @@ struct AuthFlowView: View {
     /// between registering and entering the app.
     @State private var pendingPassword = ""
     @State private var devToken: String?
+    @State private var verificationId: String?
     @State private var providerNotice: String?
 
     // WHY APPLE AND GOOGLE ARE NOT WIRED
@@ -59,10 +60,11 @@ struct AuthFlowView: View {
             case .signup:
                 SignupView(
                     onSignIn: { go(.login) },
-                    onRegistered: { email, password, token in
+                    onRegistered: { email, password, token, pendingId in
                         activeEmail = email
                         pendingPassword = password
                         devToken = token
+                        verificationId = pendingId
                         go(.verify)
                     },
                     onProviderUnavailable: { provider in
@@ -74,6 +76,7 @@ struct AuthFlowView: View {
                 VerifyView(
                     email: activeEmail,
                     devToken: devToken,
+                    verificationId: verificationId,
                     onVerified: confirmAndEnter,
                     onUseDifferentEmail: { go(.signup) }
                 )

@@ -39,11 +39,13 @@ data class RegisterRequest(
 /** Mirrors RegisterResponse. The code itself only comes back in development. */
 data class RegisterResponseDto(
     @SerializedName("message") val message: String? = null,
+    @SerializedName("verification_id") val verificationId: String? = null,
 )
 
 /** Mirrors VerifyEmailRequest: the code from the email is the token. */
 data class VerifyEmailRequest(
     @SerializedName("token") val token: String,
+    @SerializedName("verification_id") val verificationId: String? = null,
 )
 
 data class StoreDto(
@@ -162,6 +164,10 @@ interface AuthApi {
     suspend fun verifyEmail(@Body body: VerifyEmailRequest): UserDto
 }
 
+/** The pending code's opaque handle, set by register() and sent back by verifyEmail(). */
+@Volatile
+private var pendingVerificationId: String? = null
+
 object AuthHttp {
     val api: AuthApi by lazy {
         Retrofit.Builder()
@@ -198,14 +204,15 @@ class AuthRepository(private val api: AuthApi = AuthHttp.api) {
      */
     suspend fun register(email: String, fullName: String, password: String): Result<String> {
         return try {
-            val message = api.register(
+            val registered = api.register(
                 RegisterRequest(
                     email = email.trim(),
                     fullName = fullName.trim(),
                     password = password,
                 ),
-            ).message
-            Result.success(message ?: "Check your email for the confirmation code.")
+            )
+            pendingVerificationId = registered.verificationId
+            Result.success(registered.message ?: "Check your email for the confirmation code.")
         } catch (problem: Exception) {
             Result.failure(problem)
         }
@@ -214,7 +221,8 @@ class AuthRepository(private val api: AuthApi = AuthHttp.api) {
     /** Confirms the emailed code, which is what makes the account usable for sign-in. */
     suspend fun verifyEmail(code: String): Result<Unit> {
         return try {
-            api.verifyEmail(VerifyEmailRequest(code.trim()))
+            api.verifyEmail(VerifyEmailRequest(code.trim(), pendingVerificationId))
+            pendingVerificationId = null
             Result.success(Unit)
         } catch (problem: Exception) {
             Result.failure(problem)
