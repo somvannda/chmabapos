@@ -16,9 +16,20 @@ async def send_email_with_id(
     html: str | None = None,
     headers: dict[str, str] | None = None,
     reply_to: str | None = None,
+    from_address: str | None = None,
+    from_name: str | None = None,
 ) -> tuple[bool, str | None]:
     """Send one message via the configured provider, returning ``(ok, message_id)``."""
-    return await deliver_message_with_id(recipient=recipient, subject=subject, text=body, html=html, headers=headers, reply_to=reply_to)
+    return await deliver_message_with_id(
+        recipient=recipient,
+        subject=subject,
+        text=body,
+        html=html,
+        headers=headers,
+        reply_to=reply_to,
+        from_address=from_address,
+        from_name=from_name,
+    )
 
 
 async def send_email(
@@ -29,9 +40,20 @@ async def send_email(
     html: str | None = None,
     headers: dict[str, str] | None = None,
     reply_to: str | None = None,
+    from_address: str | None = None,
+    from_name: str | None = None,
 ) -> bool:
     """Send one message via the configured provider (SMTP or Resend)."""
-    ok, _ = await send_email_with_id(recipient, subject, body, html=html, headers=headers, reply_to=reply_to)
+    ok, _ = await send_email_with_id(
+        recipient,
+        subject,
+        body,
+        html=html,
+        headers=headers,
+        reply_to=reply_to,
+        from_address=from_address,
+        from_name=from_name,
+    )
     return ok
 
 
@@ -242,6 +264,8 @@ async def send_marketing_email_with_id(
     *,
     unsubscribe_token: str | None = None,
     reply_to: str | None = None,
+    from_address: str | None = None,
+    from_name: str | None = None,
 ) -> tuple[bool, str | None]:
     """Send an HTML mailing with a one-click ``List-Unsubscribe`` header.
 
@@ -253,7 +277,16 @@ async def send_marketing_email_with_id(
         url = unsubscribe_url(unsubscribe_token)
         headers["List-Unsubscribe"] = f"<{url}>"
         headers["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
-    return await send_email_with_id(recipient, subject, html_to_text(html), html=html, headers=headers, reply_to=reply_to)
+    return await send_email_with_id(
+        recipient,
+        subject,
+        html_to_text(html),
+        html=html,
+        headers=headers,
+        reply_to=reply_to,
+        from_address=from_address,
+        from_name=from_name,
+    )
 
 
 async def send_marketing_email(
@@ -263,7 +296,17 @@ async def send_marketing_email(
     *,
     unsubscribe_token: str | None = None,
     reply_to: str | None = None,
+    from_address: str | None = None,
+    from_name: str | None = None,
 ) -> bool:
     """Send an HTML mailing with a one-click ``List-Unsubscribe`` header."""
-    ok, _ = await send_marketing_email_with_id(recipient, subject, html, unsubscribe_token=unsubscribe_token, reply_to=reply_to)
+    ok, _ = await send_marketing_email_with_id(
+        recipient,
+        subject,
+        html,
+        unsubscribe_token=unsubscribe_token,
+        reply_to=reply_to,
+        from_address=from_address,
+        from_name=from_name,
+    )
     return ok

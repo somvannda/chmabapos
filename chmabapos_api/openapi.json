@@ -31526,6 +31526,39 @@
             "type": "string",
             "title": "Body Html"
           },
+          "from_address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Address"
+          },
+          "from_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Name"
+          },
+          "reply_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply To"
+          },
           "status": {
             "type": "string",
             "title": "Status"
@@ -34941,6 +34974,44 @@
         "type": "object",
         "title": "MailSecretRevealRequest"
       },
+      "MailSenderRead": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "address": {
+            "type": "string",
+            "format": "email",
+            "title": "Address"
+          },
+          "reply_to": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "email"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply To"
+          }
+        },
+        "type": "object",
+        "required": [
+          "address"
+        ],
+        "title": "MailSenderRead",
+        "description": "One address the composer may send as. ``reply_to`` routes replies."
+      },
       "MailSettingsRead": {
         "properties": {
           "provider": {
@@ -34982,6 +35053,13 @@
               }
             ],
             "title": "Reply To"
+          },
+          "senders": {
+            "items": {
+              "$ref": "#/components/schemas/MailSenderRead"
+            },
+            "type": "array",
+            "title": "Senders"
           },
           "support_inbox": {
             "anyOf": [
@@ -35137,6 +35215,20 @@
             ],
             "title": "Reply To"
           },
+          "senders": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/MailSenderRead"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Senders"
+          },
           "support_inbox": {
             "anyOf": [
               {
@@ -35283,6 +35375,39 @@
               }
             ],
             "title": "Audience Label"
+          },
+          "from_address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Address"
+          },
+          "from_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Name"
+          },
+          "reply_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply To"
           },
           "recipient_count": {
             "type": "integer",
@@ -35559,6 +35684,39 @@
               }
             ],
             "title": "Audience Label"
+          },
+          "from_address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Address"
+          },
+          "from_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Name"
+          },
+          "reply_to": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply To"
           },
           "recipient_count": {
             "type": "integer",
@@ -35854,6 +36012,30 @@
               }
             ],
             "title": "Limit"
+          },
+          "sender_email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "email"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sender Email"
+          },
+          "reply_to": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "email"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply To"
           }
         },
         "type": "object",
@@ -36350,6 +36532,30 @@
                 "type": "null"
               }
             ]
+          },
+          "sender_email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "email"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sender Email"
+          },
+          "reply_to": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "email"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reply To"
           }
         },
         "type": "object",

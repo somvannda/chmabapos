@@ -76,10 +76,10 @@ async def test_mail_settings_require_admin_and_mask_the_key(monkeypatch) -> None
     admin = f"mail-admin-{uuid.uuid4().hex[:8]}@example.com"
     calls = {"resend": 0, "smtp": 0}
 
-    def fake_resend(cfg, recipient, subject, text, html, headers, reply_to):
+    def fake_resend(cfg, recipient, subject, text, html, headers, reply_to, from_address=None, from_name=None):
         calls["resend"] += 1
 
-    def fake_smtp(cfg, recipient, subject, text, html, headers, reply_to):
+    def fake_smtp(cfg, recipient, subject, text, html, headers, reply_to, from_address=None, from_name=None):
         calls["smtp"] += 1
 
     import app.services.mail as mail_service
@@ -152,10 +152,10 @@ async def test_switching_back_to_smtp_uses_the_relay(monkeypatch) -> None:
     admin = f"mail-admin-{uuid.uuid4().hex[:8]}@example.com"
     calls = {"resend": 0, "smtp": 0}
 
-    def fake_resend(cfg, recipient, subject, text, html, headers, reply_to):
+    def fake_resend(cfg, recipient, subject, text, html, headers, reply_to, from_address=None, from_name=None):
         calls["resend"] += 1
 
-    def fake_smtp(cfg, recipient, subject, text, html, headers, reply_to):
+    def fake_smtp(cfg, recipient, subject, text, html, headers, reply_to, from_address=None, from_name=None):
         calls["smtp"] += 1
 
     import app.services.mail as mail_service

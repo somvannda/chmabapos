@@ -152,7 +152,7 @@ async def test_send_requires_super_admin_and_records_delivery(monkeypatch) -> No
     stalled = f"mailing-stalled-{uuid.uuid4().hex[:8]}@example.com"
     suppressed = f"mailing-optedout-{uuid.uuid4().hex[:8]}@example.com"
 
-    async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None):
+    async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None, from_address=None, from_name=None):
         return True, None
 
     monkeypatch.setattr("app.services.mailing.send_marketing_email_with_id", fake_send)
@@ -224,7 +224,7 @@ async def test_send_requires_super_admin_and_records_delivery(monkeypatch) -> No
 async def test_test_send_targets_one_address() -> None:
     admin = f"mailing-admin-{uuid.uuid4().hex[:8]}@example.com"
 
-    async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None):
+    async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None, from_address=None, from_name=None):
         return True, None
 
     import app.services.mailing as mailing_service
@@ -248,6 +248,78 @@ async def test_test_send_targets_one_address() -> None:
             assert body["sent"] == 1
     finally:
         mailing_service.send_marketing_email_with_id = original
+        await cleanup([admin])
+
+
+@pytest.mark.asyncio
+async def test_send_uses_selected_sender_and_reply_to(monkeypatch) -> None:
+    admin = f"mailing-admin-{uuid.uuid4().hex[:8]}@example.com"
+    sender = f"hello-{uuid.uuid4().hex[:8]}@example.com"
+    captured: dict = {}
+
+    async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None, from_address=None, from_name=None):
+        captured.update({"recipient": recipient, "reply_to": reply_to, "from_address": from_address, "from_name": from_name})
+        return True, "re_sender"
+
+    monkeypatch.setattr("app.services.mailing.send_marketing_email_with_id", fake_send)
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            await register_verified(client, admin, workspace=True)
+            await promote(admin, "super_admin")
+            headers = await login_headers(client, admin)
+            original = (await client.get("/api/v1/admin/mail-settings", headers=headers)).json()["senders"]
+            try:
+                saved = await client.patch(
+                    "/api/v1/admin/mail-settings",
+                    headers=headers,
+                    json={"senders": [{"name": "Chmaba Hello", "address": sender, "reply_to": "inbox@example.com"}]},
+                )
+                assert saved.status_code == 200
+                assert any(item["address"] == sender for item in saved.json()["senders"])
+
+                sent = await client.post(
+                    "/api/v1/admin/mailing/send",
+                    headers=headers,
+                    json={
+                        "subject": "Sender check",
+                        "body_html": "<p>Hello</p>",
+                        "test_email": admin,
+                        "min_age_hours": 0,
+                        "sender_email": sender,
+                        "reply_to": "replies@example.com",
+                    },
+                )
+                assert sent.status_code == 200
+                assert captured["from_address"] == sender
+                assert captured["from_name"] == "Chmaba Hello"
+                assert captured["reply_to"] == "replies@example.com"
+
+                unknown = await client.post(
+                    "/api/v1/admin/mailing/send",
+                    headers=headers,
+                    json={
+                        "subject": "Nope",
+                        "body_html": "<p>Hello</p>",
+                        "test_email": admin,
+                        "min_age_hours": 0,
+                        "sender_email": "not-configured@example.com",
+                    },
+                )
+                assert unknown.status_code == 422
+            finally:
+                await client.patch("/api/v1/admin/mail-settings", headers=headers, json={"senders": original})
+
+        async with SessionLocal() as db:
+            row = (
+                await db.execute(
+                    select(EmailSend).where(EmailSend.recipient_email == admin).order_by(EmailSend.created_at.desc())
+                )
+            ).scalars().first()
+            assert row is not None
+            assert row.from_address == sender
+            assert row.from_name == "Chmaba Hello"
+            assert row.reply_to == "replies@example.com"
+    finally:
         await cleanup([admin])
 
 
@@ -638,7 +710,7 @@ async def test_send_personalizes_tokens_per_recipient() -> None:
     stalled = f"mailing-personal-{uuid.uuid4().hex[:8]}@example.com"
     captured = {}
 
-    async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None):
+    async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None, from_address=None, from_name=None):
         captured[recipient] = {"subject": subject, "html": html}
         return True, "re_personalized"
 
@@ -693,7 +765,7 @@ async def test_contact_category_is_a_mailable_segment() -> None:
     category_name = f"Campaign Leads {uuid.uuid4().hex[:6]}"
     captured = {}
 
-    async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None):
+    async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None, from_address=None, from_name=None):
         captured[recipient] = {"subject": subject, "html": html}
         return True, "re_contact"
 
@@ -836,7 +908,7 @@ async def test_drip_sends_once_per_step_and_is_idempotent() -> None:
     stalled = f"mailing-drip-{uuid.uuid4().hex[:8]}@example.com"
     sent_to = []
 
-    async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None):
+    async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None, from_address=None, from_name=None):
         sent_to.append(recipient)
         return True, None
 
@@ -941,7 +1013,7 @@ async def test_drip_settings_require_super_admin_to_change() -> None:
 async def test_queue_retries_with_backoff_then_fails() -> None:
     address = f"mailing-retry-{uuid.uuid4().hex[:8]}@example.com"
 
-    async def failing_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None):
+    async def failing_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None, from_address=None, from_name=None):
         return False, None
 
     import app.services.mailing as mailing_service
@@ -987,7 +1059,7 @@ async def test_queue_retries_with_backoff_then_fails() -> None:
 async def test_queue_skips_an_address_that_unsubscribed_after_enqueue() -> None:
     address = f"mailing-late-optout-{uuid.uuid4().hex[:8]}@example.com"
 
-    async def must_not_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None):
+    async def must_not_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None, from_address=None, from_name=None):
         raise AssertionError("a suppressed recipient must never be sent to")
 
     import app.services.mailing as mailing_service
@@ -1163,7 +1235,7 @@ async def test_campaign_groups_sends_and_reports_stats() -> None:
     campaign_id = None
     sent = []
 
-    async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None):
+    async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None, from_address=None, from_name=None):
         sent.append(recipient)
         return True, "re_campaign"
 
@@ -1266,7 +1338,7 @@ async def test_drip_can_target_contact_categories() -> None:
     contact_id = None
     sent = []
 
-    async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None):
+    async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None, from_address=None, from_name=None):
         sent.append(recipient)
         return True, None
 
@@ -1362,7 +1434,7 @@ async def test_send_can_skip_contacts_without_consent() -> None:
     category_name = f"Consent Campaign {uuid.uuid4().hex[:6]}"
     sent = []
 
-    async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None):
+    async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None, from_address=None, from_name=None):
         sent.append(recipient)
         return True, "re_consent"
 
@@ -1427,7 +1499,7 @@ async def test_scheduled_campaign_releases_once() -> None:
     campaign_id = None
     sent = []
 
-    async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None):
+    async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None, from_address=None, from_name=None):
         sent.append(recipient)
         return True, "re_scheduled"
 
