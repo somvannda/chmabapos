@@ -670,6 +670,11 @@ def test_merge_values_and_render() -> None:
     assert render_merge("<p>Hi {{name}}</p>", named, escape=True) == "<p>Hi Sokha</p>"
     assert render_merge("<p>{{store}}</p>", named, escape=True) == "<p>A &amp; B Mart</p>"
     assert render_merge("Hi {{name}}", named, escape=False) == "Hi Sokha"
+    # Deep links point at this recipient's own workspace pages.
+    assert named["{{workspace_url}}"].endswith("/sokha/dashboard")
+    assert named["{{catalog_url}}"].endswith("/sokha/catalog")
+    assert named["{{help_url}}"].endswith("/sokha/help")
+    assert render_merge('<a href="{{catalog_url}}">x</a>', named, escape=True) == f'<a href="{named["{{catalog_url}}"]}">x</a>'
     # The unsubscribe token falls back to the storefront and accepts a signed URL.
     assert named["{{unsubscribe}}"]
     signed = merge_values(_Named(), "A & B Mart", "https://chmaba.com/u?token=abc")
