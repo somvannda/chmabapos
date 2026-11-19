@@ -105,6 +105,20 @@ class Settings(BaseSettings):
     # scraping, so it is generous. Zero disables either check.
     public_order_rate_limit_per_minute: int = 10
     public_read_rate_limit_per_minute: int = 120
+    # Per-client-address limits for the unauthenticated auth surface. These are
+    # enforced by middleware in app.main, so a newly added auth route is covered
+    # as soon as it is listed there. A login lockout is separate: five failed
+    # attempts for one address in fifteen minutes, cleared by a success, so a
+    # shared office IP cannot lock out a whole team. Zero disables a limit,
+    # which is how the test suite keeps its many sign-ups apart.
+    auth_login_rate_limit_per_minute: int = 10
+    auth_login_failure_limit: int = 5
+    auth_login_failure_window_minutes: int = 15
+    auth_register_rate_limit_per_hour: int = 5
+    auth_verify_rate_limit_per_minute: int = 10
+    auth_resend_rate_limit_per_hour: int = 3
+    auth_reset_request_rate_limit_per_hour: int = 3
+    auth_reset_confirm_rate_limit_per_hour: int = 10
     # How long a shopper sign-in session stays valid. Shoppers belong to no
     # company, so this is a platform value rather than a per-tenant policy like
     # the staff session TTL.

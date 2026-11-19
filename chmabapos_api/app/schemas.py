@@ -3336,6 +3336,7 @@ class AdminSearchUserRead(APIModel):
     full_name: str
     platform_role: str | None = None
     is_active: bool
+    is_email_verified: bool
 
 
 class AdminSearchCompanyRead(APIModel):

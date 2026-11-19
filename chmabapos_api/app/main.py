@@ -297,6 +297,11 @@ async def _run_payment_smoke() -> None:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    if settings.environment == "production" and not (settings.turnstile_secret_key or "").strip():
+        logger.warning(
+            "TURNSTILE_SECRET_KEY is blank in production: registration and login "
+            "have no bot challenge (see docs/auth-abuse-hardening.md)"
+        )
     workers: list[asyncio.Task] = []
     if settings.environment != "test":
         if settings.billing_job_worker_enabled:
@@ -342,9 +347,26 @@ app.add_middleware(
 )
 
 
+# Auth routes are public by necessity, so they need the same treatment as the
+# storefront surface. The mapping lives here, next to the middleware, so adding
+# a new auth route without a limit is a visible omission. Per-account checks
+# (the login lockout, per-email reset limits) still belong in the endpoint,
+# because only the parsed payload knows the address.
+AUTH_RATE_LIMITS: dict[str, tuple[str, str, int]] = {
+    "/api/v1/auth/login": ("auth-login", "auth_login_rate_limit_per_minute", 60),
+    "/api/v1/auth/google": ("auth-login", "auth_login_rate_limit_per_minute", 60),
+    "/api/v1/auth/register": ("auth-register", "auth_register_rate_limit_per_hour", 3600),
+    "/api/v1/auth/verify-email": ("auth-verify", "auth_verify_rate_limit_per_minute", 60),
+    "/api/v1/auth/resend-verification": ("auth-resend", "auth_resend_rate_limit_per_hour", 3600),
+    "/api/v1/auth/request-password-reset": ("auth-reset-request", "auth_reset_request_rate_limit_per_hour", 3600),
+    "/api/v1/auth/reset-password": ("auth-reset-confirm", "auth_reset_confirm_rate_limit_per_hour", 3600),
+    "/api/v1/auth/reset-password/validate": ("auth-reset-confirm", "auth_reset_confirm_rate_limit_per_hour", 3600),
+}
+
+
 @app.middleware("http")
 async def limit_public_requests(request: Request, call_next):
-    """Rate-limit the unauthenticated public surface.
+    """Rate-limit the unauthenticated surface: storefront and auth.
 
     Done here rather than in each endpoint so a new public route cannot quietly
     ship without a limit - the failure mode of per-endpoint checks is that someone
@@ -354,6 +376,17 @@ async def limit_public_requests(request: Request, call_next):
     A limit of zero disables the check, which is how the test suite turns it off.
     """
     path = request.url.path
+    if request.method == "POST":
+        rule = AUTH_RATE_LIMITS.get(path)
+        if rule is not None:
+            scope, setting_name, window_seconds = rule
+            limit = getattr(settings, setting_name)
+            if not check_rate_limit(client_key(request, scope), limit=limit, window_seconds=window_seconds):
+                return JSONResponse(
+                    status_code=429,
+                    content={"detail": "Too many attempts. Please wait a moment and try again."},
+                    headers={"Retry-After": "60"},
+                )
     if path.startswith("/api/v1/public/"):
         is_write = request.method not in ("GET", "HEAD", "OPTIONS")
         limit = (

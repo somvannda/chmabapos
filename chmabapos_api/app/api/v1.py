@@ -413,6 +413,7 @@ from app.services.store_notifications import daily_summary_body, low_stock_body,
 from app.services.sessions import create_session, is_new_device, revoke_session_by_token, revoke_user_sessions, rotate_session
 from app.services.session_policy import load_platform_session_policy, session_cookie_max_age
 from app.services.activity import record_activity
+from app.services import email_policy
 from app.services import health as health_service
 from app.services.payments.base import PaymentProviderError, ProviderPayment
 from app.services.payments.chamabapay import ChmabaPayClient
@@ -1248,6 +1249,9 @@ async def enforce_turnstile(token: str | None, request: Request) -> None:
 async def register(payload: RegisterRequest, request: Request, db: AsyncSession = Depends(get_db)) -> RegisterResponse:
     await enforce_turnstile(payload.turnstile_token, request)
     email = payload.email.lower()
+    reason = email_policy.blocked_reason(email)
+    if reason:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=reason)
     existing = await db.execute(select(User).where(User.email == email))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="An account with this email already exists")
@@ -1271,8 +1275,11 @@ async def register(payload: RegisterRequest, request: Request, db: AsyncSession 
 @router.post("/auth/resend-verification", response_model=ResendVerificationResponse, tags=["auth"])
 async def resend_verification(payload: ResendVerificationRequest, db: AsyncSession = Depends(get_db)) -> ResendVerificationResponse:
     # Turnstile is enforced on register/login only; the confirmation screen has
-    # no widget, so a token is not required here.
+    # no widget, so a token is not required here. A per-address window stops the
+    # endpoint being used to bomb one inbox with codes.
     email = payload.email.lower()
+    if not support_service.check_rate_limit(f"resend-email:{email}", limit=1, window_seconds=60):
+        return ResendVerificationResponse(message="If this email belongs to an unverified Chmaba account, a new code is on its way.")
     result = await db.execute(select(User).where(User.email == email))
     user = result.scalar_one_or_none()
     if not user or user.is_email_verified:
@@ -1344,12 +1351,30 @@ def _clear_refresh_cookie(response: Response) -> None:
 @router.post("/auth/login", response_model=TokenResponse, tags=["auth"])
 async def login(payload: LoginRequest, response: Response, request: Request, db: AsyncSession = Depends(get_db)) -> TokenResponse:
     await enforce_turnstile(payload.turnstile_token, request)
-    result = await db.execute(select(User).where(User.email == payload.email.lower()))
+    email = payload.email.lower()
+    # Count the attempt before checking the password, and clear the window on a
+    # success. A failure therefore accumulates, but a person who signs in
+    # correctly is never left locked out by their own earlier typos.
+    attempt_key = f"login-attempt:{email}"
+    if not support_service.check_rate_limit(
+        attempt_key,
+        limit=settings.auth_login_failure_limit,
+        window_seconds=settings.auth_login_failure_window_minutes * 60,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many sign-in attempts. Please wait a moment and try again.",
+            headers={"Retry-After": "60"},
+        )
+    result = await db.execute(select(User).where(User.email == email))
     user = result.scalar_one_or_none()
     if not user or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Email or password is incorrect")
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This account is suspended")
     if not user.is_email_verified:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Confirm your email before signing in")
+    support_service.clear_rate_limit(attempt_key)
     new_device = await is_new_device(db, user.id, user_agent=request.headers.get("user-agent"))
     session, refresh_token = await create_session(db, user, remember=payload.remember_me, request=request)
     await record_activity(db, "user.logged_in", user=user, details={"method": "password"})
@@ -1598,7 +1623,12 @@ async def google_callback(
 async def request_password_reset(payload: PasswordResetRequest, db: AsyncSession = Depends(get_db)) -> dict[str, str]:
     # Serialise requests for one account so two simultaneous "send me a link"
     # taps cannot both retire the old token and then insert a live one.
-    result = await db.execute(select(User).where(User.email == payload.email.lower(), User.is_active.is_(True)).with_for_update())
+    email = payload.email.lower()
+    # The same vague answer on every path: a caller must not learn whether the
+    # address exists, and the limit must not become an account oracle.
+    if not support_service.check_rate_limit(f"reset-email:{email}", limit=3, window_seconds=3600):
+        return {"message": "If an active account exists for this email, a reset link has been sent"}
+    result = await db.execute(select(User).where(User.email == email, User.is_active.is_(True)).with_for_update())
     user = result.scalar_one_or_none()
     if user:
         # Retire every earlier link before issuing a new one. Otherwise a user
