@@ -2374,6 +2374,19 @@ function AdminTablePage({ title, description, search, setSearch, columns, rows, 
 const MAILING_ALLOWED_TAGS = new Set(["P", "BR", "STRONG", "B", "EM", "I", "U", "A", "UL", "OL", "LI", "H2", "H3", "BLOCKQUOTE", "IMG"]);
 const MAILING_ALLOWED_ATTRS = { A: new Set(["href"]), IMG: new Set(["src", "alt"]) };
 
+// One-click next steps for the composer. The workspace links use per-recipient
+// tokens, so every merchant lands on their own catalog/help page; the guides
+// are the public library and work for contacts who have no workspace yet.
+const MAILING_GUIDE_BASE = "https://chmaba.com/guides";
+const MAILING_RECOMMENDED_LINKS = [
+  { label: "Add your first product", href: "{{catalog_url}}", note: "Opens this recipient's catalog" },
+  { label: "Open your workspace", href: "{{workspace_url}}", note: "This recipient's dashboard" },
+  { label: "Setup guides", href: "{{help_url}}", note: "Help inside their workspace" },
+  { label: "Get paid with KHQR", href: `${MAILING_GUIDE_BASE}/every-shop/get-paid-with-khqr`, note: "Guide" },
+  { label: "Take orders online", href: `${MAILING_GUIDE_BASE}/every-shop/take-orders-online`, note: "Guide" },
+  { label: "Set up staff access", href: `${MAILING_GUIDE_BASE}/every-shop/set-up-staff-access`, note: "Guide" },
+];
+
 function escapeHtmlText(text) {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
@@ -2464,8 +2477,23 @@ function RichTextEditor({ value, onChange, apiRef, onUploadImage }) {
     emit();
   };
 
+  const insertHtml = (html) => {
+    const el = ref.current;
+    if (!el) return;
+    el.focus();
+    const selection = window.getSelection();
+    // Clicking a chip can leave the caret outside the editor; append in that
+    // case so the link still lands somewhere visible instead of being lost.
+    if (selection && selection.rangeCount && el.contains(selection.anchorNode)) {
+      document.execCommand("insertHTML", false, html);
+    } else {
+      el.insertAdjacentHTML("beforeend", html);
+    }
+    emit();
+  };
+
   useEffect(() => {
-    if (apiRef) apiRef.current = { insertToken };
+    if (apiRef) apiRef.current = { insertToken, insertHtml };
   });
 
   const pickImage = () => fileRef.current?.click();
@@ -3895,12 +3923,35 @@ function AdminContacts({ token, notify, onNavigate }) {
   );
 }
 
+const MAILING_DRAFT_KEY = "chmaba.mailing.draft.v1";
+const EMPTY_MAILING_COMPOSE = { subject: "", body_html: "", template_id: null, name: "", sender_email: "", reply_to: "" };
+
+function mailingDraftStorageKey(email) {
+  return `${MAILING_DRAFT_KEY}:${(email || "team").toLowerCase()}`;
+}
+
+function readMailingDraft(email) {
+  try {
+    const raw = window.localStorage.getItem(mailingDraftStorageKey(email));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || !parsed.compose) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 function AdminMailing({ token, user, notify, onNavigate }) {
+  const [restoredDraft] = useState(() => readMailingDraft(user?.email));
   const [instruction, setInstruction] = useState("");
-  const [audience, setAudience] = useState("no_workspace");
-  const [minAgeHours, setMinAgeHours] = useState("24");
-  const [maxAgeDays, setMaxAgeDays] = useState("");
-  const [requireConsent, setRequireConsent] = useState(false);
+  const [bodyAiInstruction, setBodyAiInstruction] = useState("");
+  const [bodyAiBusy, setBodyAiBusy] = useState(false);
+  const [audience, setAudience] = useState(() => restoredDraft?.audience || "no_workspace");
+  const [minAgeHours, setMinAgeHours] = useState(() => restoredDraft?.minAgeHours ?? "24");
+  const [maxAgeDays, setMaxAgeDays] = useState(() => restoredDraft?.maxAgeDays ?? "");
+  const [requireConsent, setRequireConsent] = useState(() => Boolean(restoredDraft?.requireConsent));
+  const [draftSavedAt, setDraftSavedAt] = useState(() => (restoredDraft?.savedAt ? new Date(restoredDraft.savedAt) : null));
   const [scheduleAt, setScheduleAt] = useState("");
   const [customWindow, setCustomWindow] = useState(false);
   const [windowStart, setWindowStart] = useState("8");
@@ -3934,7 +3985,7 @@ function AdminMailing({ token, user, notify, onNavigate }) {
   const [trackingError, setTrackingError] = useState("");
   const [suppressions, setSuppressions] = useState([]);
   const [mailSettings, setMailSettings] = useState(null);
-  const [compose, setCompose] = useState({ subject: "", body_html: "", template_id: null, name: "", sender_email: "", reply_to: "" });
+  const [compose, setCompose] = useState(() => ({ ...EMPTY_MAILING_COMPOSE, ...(restoredDraft?.compose || {}) }));
   const [tab, setTab] = useState("compose");
   const [htmlMode, setHtmlMode] = useState(false);
   const [previewMode, setPreviewMode] = useState("html");
@@ -3965,11 +4016,49 @@ function AdminMailing({ token, user, notify, onNavigate }) {
   useEffect(() => {
     if (!senderIdentities.length) return;
     setCompose((current) => {
-      if (current.sender_email) return current;
+      const match = senderIdentities.find((item) => item.address === current.sender_email);
+      if (match) return current;
       const primary = senderIdentities[0];
-      return { ...current, sender_email: primary.address, reply_to: current.reply_to || primary.reply_to || primary.address };
+      return { ...current, sender_email: primary.address, reply_to: primary.reply_to || primary.address };
     });
   }, [senderIdentities]);
+
+  useEffect(() => {
+    const key = mailingDraftStorageKey(user?.email);
+    const empty = !compose.subject.trim() && !compose.body_html.trim() && !compose.template_id;
+    const timer = setTimeout(() => {
+      try {
+        if (empty) {
+          window.localStorage.removeItem(key);
+          setDraftSavedAt(null);
+          return;
+        }
+        const savedAt = Date.now();
+        window.localStorage.setItem(key, JSON.stringify({ compose, audience, minAgeHours, maxAgeDays, requireConsent, savedAt }));
+        setDraftSavedAt(new Date(savedAt));
+      } catch {
+        /* storage full or unavailable: sending still works */
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [compose, audience, minAgeHours, maxAgeDays, requireConsent, user?.email]);
+
+  const discardDraft = () => {
+    try {
+      window.localStorage.removeItem(mailingDraftStorageKey(user?.email));
+    } catch {
+      /* ignore */
+    }
+    setCompose({ ...EMPTY_MAILING_COMPOSE });
+    setAudience("no_workspace");
+    setMinAgeHours("24");
+    setMaxAgeDays("");
+    setRequireConsent(false);
+    setDraftSavedAt(null);
+    setInstruction("");
+    setBodyAiInstruction("");
+    notify("Draft discarded");
+  };
 
   const loadAudience = useCallback(async () => {
     try {
@@ -4216,6 +4305,26 @@ function AdminMailing({ token, user, notify, onNavigate }) {
     if (result) setCompose((current) => ({ ...current, subject: result.subject, body_html: result.body_html }));
   };
 
+  const editBodyWithAi = async (hint) => {
+    const direction = (hint || bodyAiInstruction).trim();
+    if (!direction) { setError("Tell the AI how to change the body."); return; }
+    if (!compose.body_html.trim()) { setError("Write the body first, then ask AI to improve it."); return; }
+    setBodyAiBusy(true);
+    setError("");
+    try {
+      const result = await api.adminMailingDraft(token, {
+        instruction: `Edit only the email body. Keep the subject exactly as: "${compose.subject}". Keep the same meaning, existing links and calls to action. ${direction}. Return the full email with that same subject. Current body:\n${htmlToPlainText(compose.body_html)}`,
+        audience,
+      });
+      setCompose((current) => ({ ...current, body_html: result.body_html }));
+      notify("Body updated with AI - review before sending");
+    } catch (requestError) {
+      setError(requestError.message || "Could not edit the body with AI");
+    } finally {
+      setBodyAiBusy(false);
+    }
+  };
+
   const saveTemplate = async () => {
     if (!compose.subject.trim() || !compose.body_html.trim()) { setError("Subject and body are required to save a template."); return; }
     const body = { name: compose.name.trim() || compose.subject.trim().slice(0, 60), subject: compose.subject, body_html: compose.body_html };
@@ -4325,6 +4434,15 @@ function AdminMailing({ token, user, notify, onNavigate }) {
     editorApi.current?.insertToken(token);
   };
 
+  const insertRecommendedLink = (link) => {
+    const anchor = `<a href="${link.href}">${link.label}</a>`;
+    if (htmlMode) {
+      setCompose((current) => ({ ...current, body_html: `${current.body_html || ""}${anchor}` }));
+      return;
+    }
+    editorApi.current?.insertHtml(anchor);
+  };
+
   const sampleForToken = (raw) => {
     const key = raw.replace(/[{}\s]/g, "").toLowerCase();
     const match = (mergeTokens || []).find((item) => item.token.replace(/[{}\s]/g, "").toLowerCase() === key);
@@ -4419,6 +4537,18 @@ function AdminMailing({ token, user, notify, onNavigate }) {
               {compose.template_id && <Button variant="danger" size="sm" disabled={busy === "template"} onClick={() => deleteTemplate(compose.template_id)}><Trash2 size={14} /></Button>}
             </div>
 
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-[#92939d]">
+              <span className={`inline-flex items-center gap-1 ${draftSavedAt ? "text-[#4f8b32]" : ""}`}>
+                <CheckCircle2 size={11} />
+                {draftSavedAt ? `Draft saved ${draftSavedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Draft saves automatically"}
+              </span>
+              <span className="text-[#c0c1c9]">·</span>
+              <span>Switching pages will not lose it.</span>
+              {(compose.subject.trim() || compose.body_html.trim() || compose.template_id) && (
+                <button type="button" onClick={discardDraft} className="ml-auto font-semibold text-[#c2564b] hover:underline">Discard draft</button>
+              )}
+            </div>
+
             <label className="mt-4 block">
               <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Subject</span>
               <input value={compose.subject} onChange={(event) => setCompose({ ...compose, subject: event.target.value })} placeholder="e.g. Your Chmaba store is ready when you are" className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]" />
@@ -4459,6 +4589,24 @@ function AdminMailing({ token, user, notify, onNavigate }) {
                 <span className="text-xs font-semibold text-[#4f5059]">Body</span>
                 <button type="button" onClick={() => setHtmlMode((mode) => !mode)} className="text-[11px] font-semibold text-[#6957f5] hover:underline">{htmlMode ? "Use visual editor" : "Edit HTML"}</button>
               </div>
+              <div className="mb-2 rounded-xl border border-[#e6e2ff] bg-[#fbfaff] p-2.5">
+                <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wide text-[#6555df]"><Sparkles size={12} /> AI body assistant</div>
+                <div className="mt-1.5 flex flex-col gap-2 sm:flex-row">
+                  <input
+                    value={bodyAiInstruction}
+                    onChange={(event) => setBodyAiInstruction(event.target.value)}
+                    onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); editBodyWithAi(); } }}
+                    placeholder="e.g. make this warmer and end with one clear next step"
+                    className="h-9 min-w-0 flex-1 rounded-lg border border-[#ded9f7] bg-white px-2.5 text-xs outline-none focus:border-[#887bf3]"
+                  />
+                  <Button size="sm" disabled={bodyAiBusy || !compose.body_html.trim()} onClick={() => editBodyWithAi()}>{bodyAiBusy ? "Editing..." : "Edit body"}</Button>
+                </div>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {["Make it shorter", "Make it friendlier", "Add a clear next step", "Fix spelling and grammar"].map((hint) => (
+                    <button key={hint} type="button" disabled={bodyAiBusy || !compose.body_html.trim()} onMouseDown={(event) => event.preventDefault()} onClick={() => editBodyWithAi(hint)} className="rounded-lg border border-[#e4e0f7] bg-white px-2 py-1 text-[10px] font-semibold text-[#6555df] transition hover:border-[#bdb9ee] disabled:opacity-50">{hint}</button>
+                  ))}
+                </div>
+              </div>
               <div className="mb-2 flex flex-wrap items-center gap-1.5">
                 <span className="text-[11px] text-[#898a95]">Insert:</span>
                 {(mergeTokens || []).map((item) => (
@@ -4473,6 +4621,21 @@ function AdminMailing({ token, user, notify, onNavigate }) {
               )}
             </div>
 
+            <div className="mt-3 rounded-xl border border-[#eef0f4] bg-[#fafbfc] p-2.5">
+              <div className="flex flex-wrap items-baseline justify-between gap-1">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-[#a1a2ab]">Recommended links</p>
+                <span className="text-[10px] text-[#92939d]">Click to insert at the cursor. Workspace links are personalized per recipient.</span>
+              </div>
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                {MAILING_RECOMMENDED_LINKS.map((link) => (
+                  <button key={link.label} type="button" title={link.note} onMouseDown={(event) => event.preventDefault()} onClick={() => insertRecommendedLink(link)} className="inline-flex items-center gap-1 rounded-lg border border-[#dcd8f4] bg-white px-2 py-1 text-[11px] font-semibold text-[#5b4be3] transition hover:border-[#bdb9ee] hover:bg-[#f7f5ff]">
+                    <Plus size={11} />
+                    {link.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="mt-4">
               <div className="flex items-center justify-between">
                 <p className="text-[10px] font-bold uppercase tracking-wide text-[#a1a2ab]">Preview</p>
@@ -4482,11 +4645,11 @@ function AdminMailing({ token, user, notify, onNavigate }) {
                   ))}
                 </div>
               </div>
-              <p className="mt-0.5 text-[11px] text-[#898a95]">Sample values shown for tokens; each recipient sees their own.</p>
+              <p className="mt-0.5 text-[11px] text-[#898a95]">Sample values shown for tokens; each recipient sees their own. Same styles as the editor; email clients may adjust fonts.</p>
               {previewMode === "html" ? (
-                <div className="mt-2 max-h-[260px] overflow-auto rounded-xl border border-[#e9e9ef] bg-[#fcfcfd] p-4 text-sm text-[#2b2c33]" dangerouslySetInnerHTML={{ __html: renderPreview(compose.body_html) || "<p style=\"color:#92939d\">Nothing to preview yet.</p>" }} />
+                <div className="rich-text app-scrollbar mt-2 min-h-[160px] max-h-[320px] overflow-auto rounded-xl border border-[#e9e9ef] bg-white px-3 py-2 text-xs leading-5 text-[#303139]" dangerouslySetInnerHTML={{ __html: renderPreview(compose.body_html) || "<p style=\"color:#92939d\">Nothing to preview yet.</p>" }} />
               ) : (
-                <pre className="mt-2 max-h-[260px] overflow-auto whitespace-pre-wrap rounded-xl border border-[#e9e9ef] bg-[#fcfcfd] p-4 font-sans text-sm text-[#2b2c33]">{htmlToPlainText(renderPreview(compose.body_html)) || "Nothing to preview yet."}</pre>
+                <pre className="mt-2 max-h-[320px] overflow-auto whitespace-pre-wrap rounded-xl border border-[#e9e9ef] bg-white px-3 py-2 font-sans text-xs leading-5 text-[#303139]">{htmlToPlainText(renderPreview(compose.body_html)) || "Nothing to preview yet."}</pre>
               )}
             </div>
           </div>
