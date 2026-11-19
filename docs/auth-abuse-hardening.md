@@ -1,7 +1,7 @@
 # Auth abuse hardening
 
-Status: in progress. The first hardening slice is on `fix/auth-abuse-hardening`
-(PR pending); the remaining items are tracked below with acceptance checks.
+Status: first hardening slice merged (#1071) and deployed to production at
+`843929c`; the remaining items are tracked below with acceptance checks.
 
 Scope: `chmabapos_api` auth surface, `deploy/nginx.conf`, `apps/admin` user status.
 
@@ -31,6 +31,37 @@ removed together with its company.
 
 The actor also requested a password reset for `duke@chmaba.com`, a platform
 admin.
+
+### Confirmed evidence (19 Nov)
+
+The actor reached the origin directly at `163.245.204.122` with `curl/8.13.0`
+(HTTP/1.1, no `X-Forwarded-For`), alongside Cloudflare-proxied requests carrying
+rotating `203.x` values in `X-Forwarded-For`. The consistent real egress is
+**66.163.112.172** (`172-112-163-66.clients.gthost.com`, AS63023 GTHost,
+Phoenix, Arizona): external hosting infrastructure, not a customer.
+
+This is the critical infrastructure finding: **Cloudflare can be bypassed by
+hitting the origin IP directly**, and `CF-Connecting-IP` can then be spoofed.
+The IP was temporarily dropped in `DOCKER-USER`; the durable fix is a
+Cloudflare-only origin allowlist (or a Tunnel) plus a Cloudflare WAF block.
+
+Duke's reset **did not succeed**: there is no `user.password_reset` event, the
+11 reset requests retired one another or expired unused, duke signed in
+successfully after the attempt, and no unknown session exists. The attacker's
+own reset (`ubalbeldwv@euploading.com`) did complete, which is how they tested
+the flow.
+
+Verification was passed with disposable inboxes, not brute force:
+`artx31061@euploading.com` registered at 16:06:21 and verified at 16:06:40;
+`ubalbeldwv@euploading.com` registered at 15:25:39 and verified at 15:26:14.
+
+`artx31061@euploading.com` created company **Artex Research 31061**, store
+**Artex Store 31061** and 3 products on the free plan. It then made 12 AI
+support calls and 13 no-match questions, including attempts to print the system
+prompt, provider API key, base URL and environment variables. Every attempt was
+refused; no secret or cross-tenant data was disclosed. The company, store and
+the 14 probe users were suspended and their sessions revoked; all rows were
+kept for evidence.
 
 ## 2. Root causes
 
@@ -183,25 +214,31 @@ If compromised:
 
 ### 4.3 Suspend and remove
 
-- Suspend every probe user and the company created by
-  `artx31061@euploading.com`.
+- Suspended on 19 Nov: all 14 probe users, plus company **Artex Research 31061**
+  and store **Artex Store 31061**. All sessions were revoked.
 - Suspension is enforced by `get_current_user` (`is_active` is checked on every
   authenticated request), so existing access tokens stop working immediately.
-- Export the company's data before deleting it; add an admin delete action as a
-  follow-up.
+- The rows and the company's 3 products were kept for evidence. Export them
+  before adding an admin delete action and removing the company.
 
 ### 4.4 Determine the source
 
-The origin logs only see Cloudflare edge addresses. Use **Cloudflare → Security →
-Events** (or Logpush) filtered to:
+The origin is directly reachable, so the nginx log contains two kinds of rows:
 
-- `POST /api/v1/auth/register`
-- `POST /api/v1/auth/verify-email`
-- `POST /api/v1/auth/request-password-reset`
+- Cloudflare-proxied requests: `$remote_addr` is a Cloudflare edge, and the
+  last `X-Forwarded-For` value is the client address;
+- direct requests: `$remote_addr` is the client and `X-Forwarded-For` is empty.
 
-Correlate by timestamp with `platform_activities`. A burst of `verify-email`
-requests means code brute force; one or two means a disposable inbox. Block the
-IP/ASN at the edge if it is clearly hostile.
+In this incident the actor used both, with `66.163.112.172` (GTHost) as the
+consistent egress and rotating `203.x` values in `X-Forwarded-For`. Use
+**Cloudflare → Security → Events** (or Logpush) filtered to the same paths to
+confirm the edge view, and block the IP/ASN at the edge. A burst of
+`verify-email` requests means code brute force; one or two means a disposable
+inbox.
+
+The origin must stop accepting direct connections: firewall 80/443 to
+Cloudflare's published ranges, or put the origin behind a Tunnel. Until then,
+`CF-Connecting-IP` is not trustworthy and the per-IP limits can be evaded.
 
 ### 4.5 Verify the deployment
 
@@ -209,10 +246,28 @@ IP/ASN at the edge if it is clearly hostile.
 docker compose -f deploy/docker-compose.prod.yml exec -T api printenv ENVIRONMENT
 ```
 
-Must be `production`. Also verify `TURNSTILE_SECRET_KEY` is set and
-`VITE_TURNSTILE_SITE_KEY` was present in the web build.
+Must be `production`. Also verify `TURNSTILE_SECRET_KEY` is non-blank and
+`VITE_TURNSTILE_SITE_KEY` was present in the web build. As of the `843929c`
+deploy both keys are still blank, so the widget is not rendered.
 
 ## 5. Remaining work
+
+### P0 — before the next signup window
+
+- [x] Deploy the first slice (`843929c`). Production rejects `example.com`
+      with `400` and throttles the sixth register attempt with `429`.
+- [x] Suspend the probe users, company and store; revoke their sessions.
+- [ ] **Cloudflare-only origin**: firewall 80/443 to Cloudflare's ranges, or use
+      a Tunnel. The actor reached the origin directly; until this is closed,
+      `CF-Connecting-IP` can be spoofed and per-IP limits can be evaded.
+- [ ] **Block the attacker at the edge**: add `66.163.112.172` (and the GTHost
+      ASN if it persists) to a Cloudflare WAF block rule. The temporary
+      `DOCKER-USER` drop is not persistent across reboot.
+- [ ] **Turnstile keys**: create the widget and set
+      `TURNSTILE_SECRET_KEY`, `TURNSTILE_SITE_KEY` and
+      `VITE_TURNSTILE_SITE_KEY`. Production is still blank today.
+- [ ] Rotate duke's password and enable 2FA as a precaution, even though the
+      reset did not complete.
 
 ### P1 — before the next production signup window
 
