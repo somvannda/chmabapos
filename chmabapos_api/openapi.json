@@ -17975,7 +17975,7 @@
           "platform-admin"
         ],
         "summary": "List Billing Payments",
-        "description": "Read-only view of plan-fee payments for support. Never returns secrets.",
+        "description": "Read-only view of plan-fee payments for support. Never returns secrets.\n\nEach row also carries who owns the company and what the subscription it paid\nfor looks like now, so support can answer \"who is this and do they still have\naccess?\" without a second lookup. ``search`` matches the company, the owner,\nand the provider reference a customer would quote.",
         "operationId": "list_billing_payments_api_v1_admin_billing_payments_get",
         "security": [
           {
@@ -18014,6 +18014,23 @@
                 }
               ],
               "title": "Company Id"
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 120
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
             }
           },
           {
@@ -23535,10 +23552,79 @@
             ],
             "title": "Company Name"
           },
+          "company_is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company Is Active"
+          },
+          "company_owner_user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company Owner User Id"
+          },
+          "company_owner_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company Owner Name"
+          },
+          "company_owner_email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "email"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company Owner Email"
+          },
           "subscription_id": {
             "type": "string",
             "format": "uuid",
             "title": "Subscription Id"
+          },
+          "subscription_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subscription Status"
+          },
+          "subscription_ends_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subscription Ends At"
           },
           "plan_code": {
             "anyOf": [

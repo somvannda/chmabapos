@@ -5039,6 +5039,11 @@ export interface paths {
         /**
          * List Billing Payments
          * @description Read-only view of plan-fee payments for support. Never returns secrets.
+         *
+         *     Each row also carries who owns the company and what the subscription it paid
+         *     for looks like now, so support can answer "who is this and do they still have
+         *     access?" without a second lookup. ``search`` matches the company, the owner,
+         *     and the provider reference a customer would quote.
          */
         get: operations["list_billing_payments_api_v1_admin_billing_payments_get"];
         put?: never;
@@ -6822,11 +6827,23 @@ export interface components {
             company_id?: string | null;
             /** Company Name */
             company_name?: string | null;
+            /** Company Is Active */
+            company_is_active?: boolean | null;
+            /** Company Owner User Id */
+            company_owner_user_id?: string | null;
+            /** Company Owner Name */
+            company_owner_name?: string | null;
+            /** Company Owner Email */
+            company_owner_email?: string | null;
             /**
              * Subscription Id
              * Format: uuid
              */
             subscription_id: string;
+            /** Subscription Status */
+            subscription_status?: string | null;
+            /** Subscription Ends At */
+            subscription_ends_at?: string | null;
             /** Plan Code */
             plan_code?: string | null;
             /** Billing Cycle */
@@ -26763,6 +26780,7 @@ export interface operations {
             query?: {
                 status?: string | null;
                 company_id?: string | null;
+                search?: string | null;
                 limit?: number;
             };
             header?: never;

@@ -102,12 +102,26 @@ async def test_admin_lists_and_filters_billing_payments() -> None:
             assert row is not None
             assert row["company_id"] == company_id
             assert row["company_name"] == "Admin View Store"
+            # Support can see who to contact without opening the company.
+            assert row["company_is_active"] is True
+            assert row["company_owner_name"] == "Admin View Owner"
+            assert row["company_owner_email"] == email
+            assert row["company_owner_user_id"]
+            assert row["subscription_status"] == "pending"
             assert row["plan_code"] == "starter"
             assert row["status"] == "pending"
             assert row["provider"] == "chamabapay"
             # Never leak secret material.
             assert "api_key" not in row and "api_key_preview" not in row
             assert "webhook_secret" not in row and "webhook_secret_preview" not in row
+
+            by_owner = await client.get("/api/v1/admin/billing-payments", params={"search": email}, headers=admin_headers)
+            assert by_owner.status_code == 200
+            assert any(item["id"] == payment["id"] for item in by_owner.json())
+
+            by_reference = await client.get("/api/v1/admin/billing-payments", params={"search": payment["reference_id"]}, headers=admin_headers)
+            assert by_reference.status_code == 200
+            assert any(item["id"] == payment["id"] for item in by_reference.json())
 
             by_company = await client.get(f"/api/v1/admin/billing-payments?company_id={company_id}", headers=admin_headers)
             assert by_company.status_code == 200

@@ -3021,7 +3021,15 @@ class AdminBillingPaymentRead(APIModel):
     id: UUID
     company_id: UUID | None = None
     company_name: str | None = None
+    company_is_active: bool | None = None
+    # The person support should talk to about this charge. A company can have
+    # several owners; the earliest-created one is reported.
+    company_owner_user_id: UUID | None = None
+    company_owner_name: str | None = None
+    company_owner_email: EmailStr | None = None
     subscription_id: UUID
+    subscription_status: str | None = None
+    subscription_ends_at: datetime | None = None
     plan_code: str | None = None
     billing_cycle: str | None = None
     amount: Decimal
