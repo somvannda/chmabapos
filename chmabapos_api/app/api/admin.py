@@ -1539,12 +1539,26 @@ async def list_billing_payments(
     db: AsyncSession = Depends(get_db),
     payment_status: str | None = Query(default=None, alias="status"),
     company_id: UUID | None = Query(default=None),
+    search: str | None = Query(default=None, max_length=120),
     limit: int = Query(default=100, ge=1, le=200),
 ) -> list[AdminBillingPaymentRead]:
-    """Read-only view of plan-fee payments for support. Never returns secrets."""
+    """Read-only view of plan-fee payments for support. Never returns secrets.
+
+    Each row also carries who owns the company and what the subscription it paid
+    for looks like now, so support can answer "who is this and do they still have
+    access?" without a second lookup. ``search`` matches the company, the owner,
+    and the provider reference a customer would quote.
+    """
     query = (
-        select(BillingPayment, Company.name)
+        select(
+            BillingPayment,
+            Company.name,
+            Company.is_active,
+            Subscription.status,
+            Subscription.ends_at,
+        )
         .outerjoin(Company, Company.id == BillingPayment.company_id)
+        .outerjoin(Subscription, Subscription.id == BillingPayment.subscription_id)
         .order_by(BillingPayment.created_at.desc())
         .limit(validate_limit(limit))
     )
@@ -1552,29 +1566,71 @@ async def list_billing_payments(
         query = query.where(BillingPayment.status == payment_status)
     if company_id:
         query = query.where(BillingPayment.company_id == company_id)
-    rows = (await db.execute(query)).all()
-    return [
-        AdminBillingPaymentRead(
-            id=payment.id,
-            company_id=payment.company_id,
-            company_name=company_name,
-            subscription_id=payment.subscription_id,
-            plan_code=payment.plan_code,
-            billing_cycle=payment.billing_cycle,
-            amount=payment.amount,
-            currency_code=payment.currency_code,
-            provider=payment.provider,
-            status=payment.status,
-            external_id=payment.external_id,
-            reference_id=payment.reference_id,
-            created_at=payment.created_at,
-            approved_at=payment.approved_at,
-            fulfilled_at=payment.fulfilled_at,
-            period_start=payment.period_start,
-            period_end=payment.period_end,
+    if search and search.strip():
+        pattern = f"%{search.strip()}%"
+        owner_companies = (
+            select(Membership.company_id)
+            .join(User, User.id == Membership.user_id)
+            .where(
+                Membership.role == "owner",
+                or_(User.email.ilike(pattern), User.full_name.ilike(pattern)),
+            )
         )
-        for payment, company_name in rows
-    ]
+        query = query.where(
+            or_(
+                Company.name.ilike(pattern),
+                BillingPayment.reference_id.ilike(pattern),
+                BillingPayment.external_id.ilike(pattern),
+                BillingPayment.company_id.in_(owner_companies),
+            )
+        )
+    rows = (await db.execute(query)).all()
+
+    company_ids = {payment.company_id for payment, *_rest in rows if payment.company_id}
+    owners: dict[UUID, tuple[UUID, str, str]] = {}
+    if company_ids:
+        owner_rows = (
+            await db.execute(
+                select(Membership.company_id, User.id, User.full_name, User.email)
+                .join(User, User.id == Membership.user_id)
+                .where(Membership.company_id.in_(company_ids), Membership.role == "owner")
+                .order_by(Membership.created_at)
+            )
+        ).all()
+        for owner_company_id, owner_user_id, owner_name, owner_email in owner_rows:
+            owners.setdefault(owner_company_id, (owner_user_id, owner_name, owner_email))
+
+    output: list[AdminBillingPaymentRead] = []
+    for payment, company_name, company_is_active, subscription_status, subscription_ends_at in rows:
+        owner_user_id, owner_name, owner_email = owners.get(payment.company_id, (None, None, None))
+        output.append(
+            AdminBillingPaymentRead(
+                id=payment.id,
+                company_id=payment.company_id,
+                company_name=company_name,
+                company_is_active=company_is_active,
+                company_owner_user_id=owner_user_id,
+                company_owner_name=owner_name,
+                company_owner_email=owner_email,
+                subscription_id=payment.subscription_id,
+                subscription_status=subscription_status,
+                subscription_ends_at=subscription_ends_at,
+                plan_code=payment.plan_code,
+                billing_cycle=payment.billing_cycle,
+                amount=payment.amount,
+                currency_code=payment.currency_code,
+                provider=payment.provider,
+                status=payment.status,
+                external_id=payment.external_id,
+                reference_id=payment.reference_id,
+                created_at=payment.created_at,
+                approved_at=payment.approved_at,
+                fulfilled_at=payment.fulfilled_at,
+                period_start=payment.period_start,
+                period_end=payment.period_end,
+            )
+        )
+    return output
 
 
 @router.get("/billing-analytics", response_model=AdminBillingAnalyticsRead)
