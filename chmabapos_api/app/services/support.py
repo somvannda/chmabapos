@@ -49,6 +49,12 @@ def check_rate_limit(key: str, *, limit: int, window_seconds: int = 3600) -> boo
     window.append(now)
     return True
 
+
+def clear_rate_limit(key: str) -> None:
+    """Forget a window after a successful attempt (e.g. a good sign-in)."""
+    _rate_windows.pop(key, None)
+
+
 SYSTEM_PROMPT = (
     "You are Chmaba's in-app support assistant for a cloud point-of-sale used by "
     "retail shops in Cambodia.\n"

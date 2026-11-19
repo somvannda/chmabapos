@@ -655,7 +655,7 @@ async def global_search(
     user_rows = (
         await db.execute(select(User).where(or_(User.email.ilike(like), User.full_name.ilike(like))).order_by(User.created_at.desc()).limit(limit))
     ).scalars().all()
-    users = [AdminSearchUserRead(id=user.id, email=user.email, full_name=user.full_name, platform_role=user.platform_role, is_active=user.is_active) for user in user_rows]
+    users = [AdminSearchUserRead(id=user.id, email=user.email, full_name=user.full_name, platform_role=user.platform_role, is_active=user.is_active, is_email_verified=user.is_email_verified) for user in user_rows]
 
     company_rows = (await db.execute(select(Company).where(Company.name.ilike(like)).order_by(Company.created_at.desc()).limit(limit))).scalars().all()
     companies = []

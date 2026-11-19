@@ -25756,6 +25756,10 @@
           "is_active": {
             "type": "boolean",
             "title": "Is Active"
+          },
+          "is_email_verified": {
+            "type": "boolean",
+            "title": "Is Email Verified"
           }
         },
         "type": "object",
@@ -25763,7 +25767,8 @@
           "id",
           "email",
           "full_name",
-          "is_active"
+          "is_active",
+          "is_email_verified"
         ],
         "title": "AdminSearchUserRead"
       },

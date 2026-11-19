@@ -7847,6 +7847,8 @@ export interface components {
             platform_role?: string | null;
             /** Is Active */
             is_active: boolean;
+            /** Is Email Verified */
+            is_email_verified: boolean;
         };
         /** AdminStatusUpdateRequest */
         AdminStatusUpdateRequest: {

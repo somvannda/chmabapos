@@ -16,29 +16,17 @@ from __future__ import annotations
 
 from fastapi import HTTPException, Request, status
 
+from app.services.client_ip import client_ip
 from app.services.support import check_rate_limit
 
 
 def client_key(request: Request, scope: str) -> str:
-    """A per-client key for ``scope``.
+    """A per-visitor key for ``scope``.
 
-    nginx sits in front of the API, so ``request.client.host`` is the proxy rather
-    than the visitor - keying on it would put every visitor in one bucket and make
-    the limit useless. Our nginx sets ``X-Real-IP`` to the true remote address and
-    overwrites any client-supplied value, so that is the trustworthy source here.
-
-    ``X-Forwarded-For`` is only a fallback, and the **right-most** entry is used
-    because nginx appends to whatever the client sent: the left-most value is
-    client-controlled and therefore spoofable.
+    ``client_ip`` resolves the proxy headers nginx and Cloudflare set; see that
+    module for why ``request.client.host`` alone is the nginx container.
     """
-    ip = (request.headers.get("x-real-ip") or "").strip()
-    if not ip:
-        forwarded = (request.headers.get("x-forwarded-for") or "").strip()
-        if forwarded:
-            ip = forwarded.rsplit(",", 1)[-1].strip()
-    if not ip and request.client:
-        ip = request.client.host
-    return f"{scope}:{ip or 'unknown'}"
+    return f"{scope}:{client_ip(request)}"
 
 
 def enforce(request: Request, scope: str, *, limit: int, window_seconds: int = 60) -> None:

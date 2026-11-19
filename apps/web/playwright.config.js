@@ -18,14 +18,21 @@ export default defineConfig({
       url: "http://127.0.0.1:8001/api/v1/health",
       reuseExistingServer: true,
       timeout: 120_000,
-      // The public surface is rate-limited per IP in production (10 writes a
-      // minute). This suite drives many real orders from a single address, so the
-      // limit is disabled here exactly as the API's own tests do
-      // (chmabapos_api/tests/conftest.py). The limiter has dedicated coverage in
-      // the API suite; here it would only make one spec flake another.
+      // The public and auth surfaces are rate-limited per IP in production.
+      // This suite drives many real orders and sign-ups from a single address,
+      // so the limits are disabled here exactly as the API's own tests do
+      // (chmabapos_api/tests/conftest.py). The limits have dedicated coverage in
+      // the API suite; here they would only make one spec flake another.
       env: {
         PUBLIC_ORDER_RATE_LIMIT_PER_MINUTE: "0",
         PUBLIC_READ_RATE_LIMIT_PER_MINUTE: "0",
+        AUTH_LOGIN_RATE_LIMIT_PER_MINUTE: "0",
+        AUTH_LOGIN_FAILURE_LIMIT: "0",
+        AUTH_REGISTER_RATE_LIMIT_PER_HOUR: "0",
+        AUTH_VERIFY_RATE_LIMIT_PER_MINUTE: "0",
+        AUTH_RESEND_RATE_LIMIT_PER_HOUR: "0",
+        AUTH_RESET_REQUEST_RATE_LIMIT_PER_HOUR: "0",
+        AUTH_RESET_CONFIRM_RATE_LIMIT_PER_HOUR: "0",
       },
     },
     {

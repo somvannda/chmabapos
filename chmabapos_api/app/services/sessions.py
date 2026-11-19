@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import AuthSession, User
 from app.security import hash_opaque_token
+from app.services.client_ip import client_ip
 from app.services.session_policy import resolve_session_ttl_minutes
 
 
@@ -37,9 +38,9 @@ def _user_agent(request: Request | None) -> str | None:
 
 
 def _ip(request: Request | None) -> str | None:
-    if request is None or request.client is None:
+    if request is None:
         return None
-    return request.client.host
+    return client_ip(request)
 
 
 def _expiry(ttl_minutes: int) -> datetime:
