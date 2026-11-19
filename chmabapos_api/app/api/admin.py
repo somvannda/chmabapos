@@ -150,6 +150,7 @@ from app.schemas import (
     MailSecretRevealRead,
     MailSecretRevealRequest,
     MailSettingsRead,
+    MailSenderRead,
     MailSettingsUpdateRequest,
     MailTestRead,
     MailTestRequest,
@@ -1972,6 +1973,7 @@ async def _mail_settings_read(db: AsyncSession) -> MailSettingsRead:
         from_address=(cfg.get("mail_from") or settings.smtp_from),
         from_name=(cfg.get("mail_from_name") or None),
         reply_to=(cfg.get("mail_reply_to") or None),
+        senders=[MailSenderRead(**item) for item in mail_service.parse_sender_identities(cfg.get("mail_senders"))],
         support_inbox=(cfg.get("mail_support_inbox") or None),
         api_key_set=bool(raw_key),
         api_key_preview=_mask_secret(raw_key),
@@ -2006,6 +2008,16 @@ async def update_mail_settings(payload: MailSettingsUpdateRequest, actor: User =
         if field_name in payload.model_fields_set:
             value = getattr(payload, field_name)
             updates[key] = str(value) if value is not None else None
+    if "senders" in payload.model_fields_set:
+        cleaned = [
+            {
+                "name": sender.name,
+                "address": str(sender.address),
+                "reply_to": str(sender.reply_to) if sender.reply_to else None,
+            }
+            for sender in payload.senders or []
+        ]
+        updates["mail_senders"] = mail_service.serialise_sender_identities(cleaned) if cleaned else None
     if updates:
         await mail_service.save_mail_settings(db, updates)
         await audit(db, actor, "admin.mail_settings_updated", "platform", None, {"fields": sorted(updates.keys())})
@@ -2356,6 +2368,14 @@ async def delete_email_template(template_id: UUID, actor: User = Depends(require
 async def send_mailing(payload: MailingSendRequest, actor: User = Depends(require_super_admin), db: AsyncSession = Depends(get_db)) -> MailingSendResultRead:
     if payload.audience not in mailing_service.AUDIENCES and not mailing_service.is_contact_audience(payload.audience):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Unknown audience")
+    try:
+        sender = mail_service.resolve_sender(
+            await mail_service.load_mail_settings(db),
+            str(payload.sender_email) if payload.sender_email else None,
+            str(payload.reply_to) if payload.reply_to else None,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     scheduled_at = payload.scheduled_at
     if scheduled_at is not None and scheduled_at.tzinfo is None:
         scheduled_at = scheduled_at.replace(tzinfo=timezone.utc)
@@ -2373,6 +2393,9 @@ async def send_mailing(payload: MailingSendRequest, actor: User = Depends(requir
             limit=payload.limit,
             require_consent=payload.require_consent,
             send_window=payload.send_window.model_dump() if payload.send_window else None,
+            from_address=sender["address"],
+            from_name=sender["name"],
+            reply_to=sender["reply_to"],
         )
     else:
         result = await mailing_service.send_campaign(
@@ -2388,6 +2411,9 @@ async def send_mailing(payload: MailingSendRequest, actor: User = Depends(requir
             limit=payload.limit,
             only_email=str(payload.test_email) if payload.test_email else None,
             require_consent=payload.require_consent,
+            from_address=sender["address"],
+            from_name=sender["name"],
+            reply_to=sender["reply_to"],
         )
     await audit(
         db,
@@ -2404,6 +2430,8 @@ async def send_mailing(payload: MailingSendRequest, actor: User = Depends(requir
             "failed": result["failed"],
             "skipped": result["skipped"],
             "scheduled_at": result["scheduled_at"].isoformat() if result["scheduled_at"] else None,
+            "from_address": sender["address"],
+            "reply_to": sender["reply_to"],
         },
     )
     await db.commit()
@@ -2448,6 +2476,21 @@ async def update_mailing_campaign(
     db: AsyncSession = Depends(get_db),
 ) -> MailingCampaignDetailRead:
     values = payload.model_dump(exclude_unset=True)
+    sender_email = values.pop("sender_email", None)
+    if sender_email:
+        try:
+            sender = mail_service.resolve_sender(
+                await mail_service.load_mail_settings(db),
+                str(sender_email),
+                str(values.get("reply_to")) if values.get("reply_to") else None,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+        values["from_address"] = sender["address"]
+        values["from_name"] = sender["name"]
+        values["reply_to"] = sender["reply_to"]
+    elif "reply_to" in values and values["reply_to"] is not None:
+        values["reply_to"] = str(values["reply_to"])
     if values.get("audience") and values["audience"] not in mailing_service.AUDIENCES and not mailing_service.is_contact_audience(values["audience"]):
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Unknown audience")
     scheduled_at = values.get("scheduled_at")

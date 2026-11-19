@@ -4478,6 +4478,14 @@ class SessionSettingsUpdateRequest(BaseModel):
     max_ttl_minutes: int | None = Field(default=None, ge=1)
 
 
+class MailSenderRead(APIModel):
+    """One address the composer may send as. ``reply_to`` routes replies."""
+
+    name: str | None = None
+    address: EmailStr
+    reply_to: EmailStr | None = None
+
+
 class MailSettingsRead(APIModel):
     """Effective outbound mail configuration. The key is never returned raw."""
 
@@ -4486,6 +4494,7 @@ class MailSettingsRead(APIModel):
     from_address: str
     from_name: str | None = None
     reply_to: str | None = None
+    senders: list[MailSenderRead] = Field(default_factory=list)
     support_inbox: str | None = None
     api_key_set: bool = False
     api_key_preview: str | None = None
@@ -4505,6 +4514,7 @@ class MailSettingsUpdateRequest(BaseModel):
     from_address: EmailStr | None = None
     from_name: str | None = Field(default=None, max_length=120)
     reply_to: EmailStr | None = None
+    senders: list[MailSenderRead] | None = None
     support_inbox: EmailStr | None = None
 
 
@@ -4695,6 +4705,10 @@ class MailingSendRequest(BaseModel):
     require_consent: bool = False
     scheduled_at: datetime | None = None
     send_window: MailingDripWindowRequest | None = None
+    # Which configured identity to send as, and where replies should land.
+    # Both are optional; the platform default is used when omitted.
+    sender_email: EmailStr | None = None
+    reply_to: EmailStr | None = None
 
 
 class MailingSendResultRead(APIModel):
@@ -4714,6 +4728,9 @@ class EmailSendRead(APIModel):
     recipient_email: EmailStr
     subject: str
     body_html: str
+    from_address: str | None = None
+    from_name: str | None = None
+    reply_to: str | None = None
     status: str
     error: str | None = None
     template_id: UUID | None = None
@@ -4749,6 +4766,9 @@ class MailingCampaignRead(APIModel):
     subject: str
     audience: str
     audience_label: str | None = None
+    from_address: str | None = None
+    from_name: str | None = None
+    reply_to: str | None = None
     recipient_count: int = 0
     scheduled_at: datetime | None = None
     released_at: datetime | None = None
@@ -4797,6 +4817,8 @@ class MailingCampaignUpdateRequest(BaseModel):
     max_age_days: int | None = Field(default=None, ge=0, le=3650)
     require_consent: bool | None = None
     limit: int | None = Field(default=None, ge=1, le=500)
+    sender_email: EmailStr | None = None
+    reply_to: EmailStr | None = None
 
 
 class EmailSendPageRead(APIModel):

@@ -1602,6 +1602,11 @@ class MailingCampaign(Base):
     template_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("email_templates.id", ondelete="SET NULL"), nullable=True)
     audience: Mapped[str] = mapped_column(String(60))
     audience_label: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    # The sender identity chosen when the campaign was composed. Null means the
+    # platform default at send time (rows queued before this existed).
+    from_address: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    from_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    reply_to: Mapped[str | None] = mapped_column(String(320), nullable=True)
     sent_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     recipient_count: Mapped[int] = mapped_column(Integer, default=0)
     # Scheduling: unresolved campaigns have no released_at yet; the worker fills
@@ -1663,6 +1668,12 @@ class EmailSend(Base):
     recipient_email: Mapped[str] = mapped_column(String(320))
     subject: Mapped[str] = mapped_column(String(300))
     body_html: Mapped[str] = mapped_column(Text)
+    # Sender identity this exact message must use when the queue drains it.
+    # Null rows inherit the platform default, which is how drip and
+    # transactional mail keep working unchanged.
+    from_address: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    from_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    reply_to: Mapped[str | None] = mapped_column(String(320), nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="sent")
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     sent_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)

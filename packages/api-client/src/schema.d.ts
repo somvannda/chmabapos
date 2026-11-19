@@ -10125,6 +10125,12 @@ export interface components {
             subject: string;
             /** Body Html */
             body_html: string;
+            /** From Address */
+            from_address?: string | null;
+            /** From Name */
+            from_name?: string | null;
+            /** Reply To */
+            reply_to?: string | null;
             /** Status */
             status: string;
             /** Error */
@@ -11264,6 +11270,21 @@ export interface components {
             field: "api_key" | "webhook_secret";
         };
         /**
+         * MailSenderRead
+         * @description One address the composer may send as. ``reply_to`` routes replies.
+         */
+        MailSenderRead: {
+            /** Name */
+            name?: string | null;
+            /**
+             * Address
+             * Format: email
+             */
+            address: string;
+            /** Reply To */
+            reply_to?: string | null;
+        };
+        /**
          * MailSettingsRead
          * @description Effective outbound mail configuration. The key is never returned raw.
          */
@@ -11280,6 +11301,8 @@ export interface components {
             from_name?: string | null;
             /** Reply To */
             reply_to?: string | null;
+            /** Senders */
+            senders?: components["schemas"]["MailSenderRead"][];
             /** Support Inbox */
             support_inbox?: string | null;
             /**
@@ -11324,6 +11347,8 @@ export interface components {
             from_name?: string | null;
             /** Reply To */
             reply_to?: string | null;
+            /** Senders */
+            senders?: components["schemas"]["MailSenderRead"][] | null;
             /** Support Inbox */
             support_inbox?: string | null;
         };
@@ -11390,6 +11415,12 @@ export interface components {
             audience: string;
             /** Audience Label */
             audience_label?: string | null;
+            /** From Address */
+            from_address?: string | null;
+            /** From Name */
+            from_name?: string | null;
+            /** Reply To */
+            reply_to?: string | null;
             /**
              * Recipient Count
              * @default 0
@@ -11512,6 +11543,12 @@ export interface components {
             audience: string;
             /** Audience Label */
             audience_label?: string | null;
+            /** From Address */
+            from_address?: string | null;
+            /** From Name */
+            from_name?: string | null;
+            /** Reply To */
+            reply_to?: string | null;
             /**
              * Recipient Count
              * @default 0
@@ -11616,6 +11653,10 @@ export interface components {
             require_consent?: boolean | null;
             /** Limit */
             limit?: number | null;
+            /** Sender Email */
+            sender_email?: string | null;
+            /** Reply To */
+            reply_to?: string | null;
         };
         /** MailingDripRead */
         MailingDripRead: {
@@ -11862,6 +11903,10 @@ export interface components {
             /** Scheduled At */
             scheduled_at?: string | null;
             send_window?: components["schemas"]["MailingDripWindowRequest"] | null;
+            /** Sender Email */
+            sender_email?: string | null;
+            /** Reply To */
+            reply_to?: string | null;
         };
         /** MailingSendResultRead */
         MailingSendResultRead: {

@@ -442,6 +442,9 @@ async def _queue_campaign_rows(db: AsyncSession, campaign: MailingCampaign, peop
                 recipient_email=person.email,
                 subject=personal_subject,
                 body_html=personal_html,
+                from_address=campaign.from_address,
+                from_name=campaign.from_name,
+                reply_to=campaign.reply_to,
                 status="queued",
                 sent_by=campaign.sent_by,
                 source="manual",
@@ -466,6 +469,9 @@ async def send_campaign(
     limit: int = DEFAULT_SEND_LIMIT,
     only_email: str | None = None,
     require_consent: bool = False,
+    from_address: str | None = None,
+    from_name: str | None = None,
+    reply_to: str | None = None,
 ) -> dict:
     """Queue a message for a segment, or send a single test immediately.
 
@@ -495,7 +501,13 @@ async def send_campaign(
             personal_subject = render_merge(subject, values, escape=False)
             personal_html = render_merge(body_html, values, escape=True)
             ok, message_id = await send_marketing_email_with_id(
-                person.email, personal_subject, personal_html, unsubscribe_token=create_unsubscribe_token(person.email)
+                person.email,
+                personal_subject,
+                personal_html,
+                unsubscribe_token=create_unsubscribe_token(person.email),
+                reply_to=reply_to,
+                from_address=from_address,
+                from_name=from_name,
             )
             row = EmailSend(
                 user_id=user_id,
@@ -503,6 +515,9 @@ async def send_campaign(
                 recipient_email=person.email,
                 subject=personal_subject,
                 body_html=personal_html,
+                from_address=from_address,
+                from_name=from_name,
+                reply_to=reply_to,
                 status="sent" if ok else "failed",
                 error=None if ok else "Delivery failed",
                 sent_by=actor_id,
@@ -547,6 +562,9 @@ async def send_campaign(
             audience=audience,
             audience_label=await audience_label(db, audience),
             sent_by=actor_id,
+            from_address=from_address,
+            from_name=from_name,
+            reply_to=reply_to,
             recipient_count=0,
             released_at=utc_now(),
             min_age_hours=min_age_hours,
@@ -582,6 +600,9 @@ async def schedule_campaign(
     limit: int = DEFAULT_SEND_LIMIT,
     require_consent: bool = False,
     send_window: dict | None = None,
+    from_address: str | None = None,
+    from_name: str | None = None,
+    reply_to: str | None = None,
 ) -> dict:
     """Persist a campaign to be released by the worker at ``scheduled_at``."""
     limit = max(1, min(limit, MAX_SEND_LIMIT))
@@ -593,6 +614,9 @@ async def schedule_campaign(
         audience=audience,
         audience_label=await audience_label(db, audience),
         sent_by=actor_id,
+        from_address=from_address,
+        from_name=from_name,
+        reply_to=reply_to,
         recipient_count=0,
         scheduled_at=scheduled_at,
         min_age_hours=min_age_hours,
@@ -646,6 +670,12 @@ async def update_scheduled_campaign(db: AsyncSession, campaign_id: UUID, values:
         campaign.max_age_days = values["max_age_days"]
     if "require_consent" in values and values["require_consent"] is not None:
         campaign.require_consent = bool(values["require_consent"])
+    if "from_address" in values:
+        campaign.from_address = values["from_address"]
+    if "from_name" in values:
+        campaign.from_name = values["from_name"]
+    if "reply_to" in values:
+        campaign.reply_to = values["reply_to"]
     if values.get("limit"):
         campaign.send_limit = max(1, min(int(values["limit"]), MAX_SEND_LIMIT))
     await db.commit()
@@ -820,6 +850,9 @@ def campaign_payload(campaign: MailingCampaign, stats: dict | None = None) -> di
         "subject": campaign.subject,
         "audience": campaign.audience,
         "audience_label": campaign.audience_label,
+        "from_address": campaign.from_address,
+        "from_name": campaign.from_name,
+        "reply_to": campaign.reply_to,
         "recipient_count": campaign.recipient_count,
         "scheduled_at": campaign.scheduled_at,
         "released_at": campaign.released_at,
@@ -986,15 +1019,33 @@ async def send_pending_emails(db: AsyncSession, *, limit: int = 50, now: datetim
                 # Send both parts; fall back to plain text for legacy rows.
                 body = row.body_html or ""
                 if "<html" in body.lower() or body.lstrip().startswith("<"):
-                    ok, message_id = await send_email_with_id(row.recipient_email, row.subject, html_to_text(body), html=body)
+                    ok, message_id = await send_email_with_id(
+                        row.recipient_email,
+                        row.subject,
+                        html_to_text(body),
+                        html=body,
+                        reply_to=row.reply_to,
+                        from_address=row.from_address,
+                        from_name=row.from_name,
+                    )
                 else:
-                    ok, message_id = await send_email_with_id(row.recipient_email, row.subject, body)
+                    ok, message_id = await send_email_with_id(
+                        row.recipient_email,
+                        row.subject,
+                        body,
+                        reply_to=row.reply_to,
+                        from_address=row.from_address,
+                        from_name=row.from_name,
+                    )
             else:
                 ok, message_id = await send_marketing_email_with_id(
                     row.recipient_email,
                     row.subject,
                     row.body_html,
                     unsubscribe_token=create_unsubscribe_token(row.recipient_email),
+                    reply_to=row.reply_to,
+                    from_address=row.from_address,
+                    from_name=row.from_name,
                 )
             row.attempts += 1
             row.last_attempt_at = now
