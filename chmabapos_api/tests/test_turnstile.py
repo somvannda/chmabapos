@@ -92,7 +92,7 @@ async def test_enforce_turnstile_rejects_when_configured(monkeypatch) -> None:
         return False
 
     monkeypatch.setattr("app.api.v1.verify_turnstile", fake_verify)
-    request = SimpleNamespace(client=SimpleNamespace(host="1.2.3.4"))
+    request = SimpleNamespace(headers={}, client=SimpleNamespace(host="1.2.3.4"))
     with pytest.raises(HTTPException) as exc:
         await enforce_turnstile("bad-token", request)
     assert exc.value.status_code == 400
@@ -127,6 +127,48 @@ async def test_register_rejects_bot_when_configured(monkeypatch) -> None:
         response = await client.post(
             "/api/v1/auth/register",
             json={"email": "bot@example.com", "full_name": "Bot Bot", "password": "strong-password"},
+        )
+    assert response.status_code == 400
+    assert "human" in response.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_login_rejects_bot_when_configured(monkeypatch) -> None:
+    from httpx import ASGITransport, AsyncClient
+
+    from app.main import app
+
+    monkeypatch.setattr(settings, "turnstile_secret_key", "secret")
+
+    async def fake_verify(token, *, remote_ip=None):
+        return False
+
+    monkeypatch.setattr("app.api.v1.verify_turnstile", fake_verify)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/api/v1/auth/login",
+            json={"email": "bot@example.com", "password": "strong-password"},
+        )
+    assert response.status_code == 400
+    assert "human" in response.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_password_reset_rejects_bot_when_configured(monkeypatch) -> None:
+    from httpx import ASGITransport, AsyncClient
+
+    from app.main import app
+
+    monkeypatch.setattr(settings, "turnstile_secret_key", "secret")
+
+    async def fake_verify(token, *, remote_ip=None):
+        return False
+
+    monkeypatch.setattr("app.api.v1.verify_turnstile", fake_verify)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.post(
+            "/api/v1/auth/request-password-reset",
+            json={"email": "bot@example.com"},
         )
     assert response.status_code == 400
     assert "human" in response.json()["detail"].lower()

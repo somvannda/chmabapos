@@ -12729,6 +12729,8 @@ export interface components {
              * Format: email
              */
             email: string;
+            /** Turnstile Token */
+            turnstile_token?: string | null;
         };
         /** PasswordResetTokenRequest */
         PasswordResetTokenRequest: {

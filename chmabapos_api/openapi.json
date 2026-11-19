@@ -38396,6 +38396,18 @@
             "type": "string",
             "format": "email",
             "title": "Email"
+          },
+          "turnstile_token": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4096
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Turnstile Token"
           }
         },
         "type": "object",

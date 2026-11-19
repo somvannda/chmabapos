@@ -415,6 +415,7 @@ from app.services.session_policy import load_platform_session_policy, session_co
 from app.services.activity import record_activity
 from app.services import email_policy
 from app.services import health as health_service
+from app.services.client_ip import client_ip
 from app.services.payments.base import PaymentProviderError, ProviderPayment
 from app.services.payments.chamabapay import ChmabaPayClient
 from app.services.payments.registry import payment_provider_for
@@ -1237,7 +1238,9 @@ async def enforce_turnstile(token: str | None, request: Request) -> None:
     """
     if not settings.turnstile_enabled:
         return
-    remote_ip = request.client.host if request.client else None
+    # Send the visitor, not the nginx container, so Cloudflare can bind the
+    # token to the address that solved it.
+    remote_ip = client_ip(request)
     if not await verify_turnstile(token, remote_ip=remote_ip):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -1620,7 +1623,8 @@ async def google_callback(
 
 
 @router.post("/auth/request-password-reset", tags=["auth"])
-async def request_password_reset(payload: PasswordResetRequest, db: AsyncSession = Depends(get_db)) -> dict[str, str]:
+async def request_password_reset(payload: PasswordResetRequest, request: Request, db: AsyncSession = Depends(get_db)) -> dict[str, str]:
+    await enforce_turnstile(payload.turnstile_token, request)
     # Serialise requests for one account so two simultaneous "send me a link"
     # taps cannot both retire the old token and then insert a live one.
     email = payload.email.lower()

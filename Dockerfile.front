@@ -29,8 +29,12 @@ RUN cd apps/web && VITE_STOREFRONT_URL=$VITE_STOREFRONT_URL VITE_TURNSTILE_SITE_
 FROM node:20-alpine AS admin-builder
 WORKDIR /repo
 COPY . .
+# The admin sign-in uses the same public Turnstile site key as the web app.
+# Passed through the build command so a key change invalidates the layer.
+ARG VITE_TURNSTILE_SITE_KEY=
+ENV VITE_TURNSTILE_SITE_KEY=$VITE_TURNSTILE_SITE_KEY
 RUN cd apps/admin && npm install --no-audit --no-fund
-RUN cd apps/admin && npm run build
+RUN cd apps/admin && VITE_TURNSTILE_SITE_KEY=$VITE_TURNSTILE_SITE_KEY npm run build
 
 # ---------- Serve ----------
 FROM nginx:1.27-alpine
