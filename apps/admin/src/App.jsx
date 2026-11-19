@@ -2647,12 +2647,12 @@ function MailSettingsPanel({ token, user, notify }) {
   const { busy, error, run } = useRunner();
   const canManage = user?.platform_role === "super_admin";
   const [mail, setMail] = useState(null);
-  const [draft, setDraft] = useState({ provider: "smtp", resend_api_key: "", resend_webhook_secret: "", from_address: "", from_name: "", reply_to: "", support_inbox: "" });
+  const [draft, setDraft] = useState({ provider: "smtp", resend_api_key: "", resend_webhook_secret: "", from_address: "", from_name: "", reply_to: "", support_inbox: "", senders: [] });
   const [testTo, setTestTo] = useState("");
 
   const applyRow = useCallback((row) => {
     setMail(row);
-    setDraft((current) => ({ provider: row.provider || "smtp", from_address: row.from_address || "", from_name: row.from_name || "", reply_to: row.reply_to || "", support_inbox: row.support_inbox || "", resend_api_key: current.resend_api_key, resend_webhook_secret: current.resend_webhook_secret }));
+    setDraft((current) => ({ provider: row.provider || "smtp", from_address: row.from_address || "", from_name: row.from_name || "", reply_to: row.reply_to || "", support_inbox: row.support_inbox || "", senders: row.senders || [], resend_api_key: current.resend_api_key, resend_webhook_secret: current.resend_webhook_secret }));
   }, []);
 
   useEffect(() => {
@@ -2667,6 +2667,9 @@ function MailSettingsPanel({ token, user, notify }) {
     if (draft.from_name !== "") body.from_name = draft.from_name;
     if (draft.reply_to !== "") body.reply_to = draft.reply_to;
     if (draft.support_inbox !== "") body.support_inbox = draft.support_inbox;
+    body.senders = draft.senders
+      .map((sender) => ({ name: (sender.name || "").trim() || null, address: (sender.address || "").trim(), reply_to: (sender.reply_to || "").trim() || null }))
+      .filter((sender) => sender.address);
     if (draft.resend_api_key) body.resend_api_key = draft.resend_api_key;
     if (draft.resend_webhook_secret) body.resend_webhook_secret = draft.resend_webhook_secret;
     const saved = await run("save", () => api.adminUpdateMailSettings(token, body));
@@ -2683,6 +2686,10 @@ function MailSettingsPanel({ token, user, notify }) {
     const result = await run("test", () => api.adminTestMail(token, testTo.trim()));
     if (result) notify(result.sent ? `Test email sent via ${result.provider}` : `Test failed (${result.provider}): ${result.detail || "unknown error"}`);
   };
+
+  const updateSender = (index, patch) => setDraft((current) => ({ ...current, senders: current.senders.map((sender, position) => (position === index ? { ...sender, ...patch } : sender)) }));
+  const addSender = () => setDraft((current) => ({ ...current, senders: [...current.senders, { name: "", address: "", reply_to: "" }] }));
+  const removeSender = (index) => setDraft((current) => ({ ...current, senders: current.senders.filter((_, position) => position !== index) }));
 
   return (
     <SettingsCard
@@ -2718,6 +2725,27 @@ function MailSettingsPanel({ token, user, notify }) {
               <input value={draft.support_inbox} onChange={(event) => setDraft({ ...draft, support_inbox: event.target.value })} placeholder="support@chmaba.com" className={SETTINGS_INPUT} />
               <span className="mt-1.5 block text-[11px] text-[#92939d]">Merchant replies to support tickets are emailed here.</span>
             </label>
+          </div>
+          <div className="mt-4 rounded-xl border border-[#f0f0f3] bg-[#fafafd] p-3">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <p className="text-xs font-semibold text-[#4f5059]">Other sender addresses</p>
+                <p className="mt-0.5 text-[11px] text-[#92939d]">The composer can send as any of these. Each address must be verified with the mail provider for its domain.</p>
+              </div>
+              <Button variant="outline" size="sm" onClick={addSender} disabled={draft.senders.length >= 10}><Plus size={13} /> Add sender</Button>
+            </div>
+            {draft.senders.length > 0 && (
+              <div className="mt-3 space-y-2">
+                {draft.senders.map((sender, index) => (
+                  <div key={index} className="grid gap-2 sm:grid-cols-[.8fr_1fr_1fr_auto]">
+                    <input value={sender.name || ""} onChange={(event) => updateSender(index, { name: event.target.value })} placeholder="Display name" className={SETTINGS_INPUT} />
+                    <input value={sender.address || ""} onChange={(event) => updateSender(index, { address: event.target.value })} placeholder="hello@chmaba.com" className={SETTINGS_INPUT} />
+                    <input value={sender.reply_to || ""} onChange={(event) => updateSender(index, { reply_to: event.target.value })} placeholder="Replies to (defaults to address)" className={SETTINGS_INPUT} />
+                    <Button variant="ghost" size="sm" onClick={() => removeSender(index)} aria-label="Remove sender"><Trash2 size={14} /></Button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
           {draft.provider === "resend" && (
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -3905,7 +3933,8 @@ function AdminMailing({ token, user, notify, onNavigate }) {
   const [trackingBusy, setTrackingBusy] = useState(false);
   const [trackingError, setTrackingError] = useState("");
   const [suppressions, setSuppressions] = useState([]);
-  const [compose, setCompose] = useState({ subject: "", body_html: "", template_id: null, name: "" });
+  const [mailSettings, setMailSettings] = useState(null);
+  const [compose, setCompose] = useState({ subject: "", body_html: "", template_id: null, name: "", sender_email: "", reply_to: "" });
   const [tab, setTab] = useState("compose");
   const [htmlMode, setHtmlMode] = useState(false);
   const [previewMode, setPreviewMode] = useState("html");
@@ -3917,6 +3946,30 @@ function AdminMailing({ token, user, notify, onNavigate }) {
   const editorApi = useRef(null);
   const dripEditors = useRef({});
   const canSend = user?.platform_role === "super_admin";
+
+  const senderIdentities = useMemo(() => {
+    if (!mailSettings) return [];
+    const list = [
+      { name: mailSettings.from_name || "", address: mailSettings.from_address || "", reply_to: mailSettings.reply_to || "" },
+      ...(mailSettings.senders || []),
+    ];
+    const seen = new Set();
+    return list.filter((item) => {
+      const key = (item.address || "").trim().toLowerCase();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [mailSettings]);
+
+  useEffect(() => {
+    if (!senderIdentities.length) return;
+    setCompose((current) => {
+      if (current.sender_email) return current;
+      const primary = senderIdentities[0];
+      return { ...current, sender_email: primary.address, reply_to: current.reply_to || primary.reply_to || primary.address };
+    });
+  }, [senderIdentities]);
 
   const loadAudience = useCallback(async () => {
     try {
@@ -3933,12 +3986,13 @@ function AdminMailing({ token, user, notify, onNavigate }) {
     let active = true;
     (async () => {
       try {
-        const [templateRows, catalogRows, suppressionRows, tokenRows, dripRow] = await Promise.all([
+        const [templateRows, catalogRows, suppressionRows, tokenRows, dripRow, mailRow] = await Promise.all([
           api.adminMailingTemplates(token),
           api.adminMailingEmails(token),
           api.adminMailingSuppressions(token, 100),
           api.adminMailingTokens(token),
           api.adminMailingDrip(token),
+          api.adminMailSettings(token).catch(() => null),
         ]);
         if (!active) return;
         setTemplates(templateRows);
@@ -3946,6 +4000,7 @@ function AdminMailing({ token, user, notify, onNavigate }) {
         setSuppressions(suppressionRows);
         setMergeTokens(tokenRows);
         setDrip(dripRow);
+        setMailSettings(mailRow);
       } catch (requestError) {
         if (active) setError(requestError.message || "Could not load mailing data");
       }
@@ -4179,6 +4234,8 @@ function AdminMailing({ token, user, notify, onNavigate }) {
     if (!compose.subject.trim() || !compose.body_html.trim()) { setError("Subject and body are required."); return; }
     const body = { subject: compose.subject, body_html: compose.body_html, audience, limit: 200 };
     if (compose.template_id) body.template_id = compose.template_id;
+    if (compose.sender_email) body.sender_email = compose.sender_email;
+    if (compose.reply_to.trim()) body.reply_to = compose.reply_to.trim();
     if (audience.startsWith("contact:")) body.require_consent = Boolean(requireConsent);
     if (minAgeHours !== "") body.min_age_hours = Number(minAgeHours);
     if (maxAgeDays !== "") body.max_age_days = Number(maxAgeDays);
@@ -4367,6 +4424,27 @@ function AdminMailing({ token, user, notify, onNavigate }) {
               <input value={compose.subject} onChange={(event) => setCompose({ ...compose, subject: event.target.value })} placeholder="e.g. Your Chmaba store is ready when you are" className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]" />
             </label>
 
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Send as</span>
+                <Dropdown
+                  value={compose.sender_email}
+                  onChange={(value) => {
+                    const identity = senderIdentities.find((item) => item.address === value);
+                    setCompose((current) => ({ ...current, sender_email: value, reply_to: identity?.reply_to || value }));
+                  }}
+                  options={senderIdentities.map((item) => ({ value: item.address, label: item.name ? `${item.name} <${item.address}>` : item.address }))}
+                  placeholder={senderIdentities.length ? "Choose a sender" : "Configure a sender in Settings"}
+                />
+                <span className="mt-1.5 block text-[10px] text-[#92939d]">Manage addresses under Settings → Email sending.</span>
+              </label>
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Replies go to</span>
+                <input value={compose.reply_to} onChange={(event) => setCompose((current) => ({ ...current, reply_to: event.target.value }))} placeholder="support@chmaba.com" className="h-11 w-full rounded-xl border border-[#dfdfe8] bg-white px-3.5 text-sm outline-none focus:border-[#887bf3]" />
+                <span className="mt-1.5 block text-[10px] text-[#92939d]">Replies land in this inbox, not inside Chmaba.</span>
+              </label>
+            </div>
+
             <div className="mt-4 rounded-xl border border-[#e6e2ff] bg-[#f7f5ff] p-3">
               <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-[#6555df]"><Sparkles size={13} /> Draft with AI</div>
               <textarea value={instruction} onChange={(event) => setInstruction(event.target.value)} rows={2} placeholder="e.g. Warm reminder to finish setup, mention the free plan and one-click help" className="mt-2 w-full resize-y rounded-lg border border-[#ded9f7] bg-white px-3 py-2 text-xs outline-none focus:border-[#887bf3]" />
@@ -4481,6 +4559,7 @@ function AdminMailing({ token, user, notify, onNavigate }) {
             <div className="rounded-2xl border border-[#e9e9ef] bg-white p-5">
               <p className="text-sm font-extrabold">Send</p>
               <p className="mt-1 text-xs text-[#898a95]">Test to yourself first, then send to the segment. Unsubscribed addresses are always skipped.</p>
+              {compose.sender_email && <p className="mt-2 rounded-lg bg-[#fafafd] px-2.5 py-1.5 text-[11px] text-[#4f5059]">Sending as <strong>{compose.sender_email}</strong>{compose.reply_to.trim() ? ` · replies to ${compose.reply_to.trim()}` : ""}</p>}
               {!canSend && <p className="mt-3 rounded-xl border border-[#ffe6a8] bg-[#fffaf0] px-3 py-2 text-[11px] text-[#ad7d1c]">Sending is limited to super admins.</p>}
               <label className="mt-3 block">
                 <span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Schedule for (optional)</span>
@@ -4725,6 +4804,7 @@ function AdminMailing({ token, user, notify, onNavigate }) {
                         <div className="min-w-0">
                           <p className="truncate font-bold text-[#3d3e47]">{campaign.name}</p>
                           <p className="truncate text-[10px] text-[#999aa4]">{campaign.subject}</p>
+                          {campaign.from_address && <p className="truncate text-[10px] text-[#a1a2ab]">as {campaign.from_address}{campaign.reply_to ? ` · replies ${campaign.reply_to}` : ""}</p>}
                           {campaign.links?.length > 0 && (
                             <p className="mt-0.5 truncate text-[10px]">
                               <a href={campaign.links[0].url} target="_blank" rel="noreferrer" title={campaign.links.map((link) => `${link.url} (${link.clicks})`).join("\n")} className="font-semibold text-[#6957f5] hover:underline">{campaign.links[0].url}</a>
@@ -4849,7 +4929,10 @@ function AdminMailing({ token, user, notify, onNavigate }) {
                   {sends.map((row) => (
                     <tr key={row.id} className="border-b border-[#f0f0f3] last:border-0">
                       <td className="px-4 py-3 font-bold text-[#4d4e57]">{row.recipient_email}</td>
-                      <td className="px-4 py-3">{row.subject}</td>
+                      <td className="px-4 py-3">
+                        <p>{row.subject}</p>
+                        {(row.from_address || row.reply_to) && <p className="mt-0.5 text-[10px] text-[#999aa4]">{row.from_address ? `from ${row.from_address}` : ""}{row.reply_to ? `${row.from_address ? " · " : ""}replies ${row.reply_to}` : ""}</p>}
+                      </td>
                       <td className="px-4 py-3" title={row.error || undefined}><Badge tone={MAILING_STATUS_TONE[row.status] || "neutral"}>{row.status}</Badge></td>
                       <td className="px-4 py-3 text-[#898a95]">{row.delivered_at ? new Date(row.delivered_at).toLocaleString() : "—"}</td>
                       <td className="px-4 py-3 text-[#898a95]">{row.opened_at ? new Date(row.opened_at).toLocaleString() : "—"}</td>
