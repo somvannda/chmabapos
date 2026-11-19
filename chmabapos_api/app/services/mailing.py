@@ -17,7 +17,7 @@ from sqlalchemy import and_, func, or_, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.email import html_to_text, send_email_with_id, send_marketing_email_with_id, unsubscribe_url
+from app.email import app_url, html_to_text, send_email_with_id, send_marketing_email_with_id, unsubscribe_url, username_for
 from app.models import Company, Contact, ContactCategory, EmailClickEvent, EmailSend, EmailSuppression, EmailVerificationToken, MailingCampaign, MailingDripDelivery, Membership, Order, PlatformSetting, Product, Store, User
 from app.security import ALGORITHM
 from app.services import mail as mail_service
@@ -168,21 +168,33 @@ MERGE_TOKENS: tuple[dict[str, str], ...] = (
     {"token": "{{full_name}}", "label": "Full name", "sample": "Sokha Chan"},
     {"token": "{{store}}", "label": "Store / business name", "sample": "Sokha Mart"},
     {"token": "{{email}}", "label": "Email address", "sample": "sokha@example.com"},
+    # Per-recipient deep links, so a "add your first product" button lands in
+    # the right workspace instead of a generic marketing page.
+    {"token": "{{workspace_url}}", "label": "Workspace link", "sample": "https://chmaba.com/sokha/dashboard"},
+    {"token": "{{catalog_url}}", "label": "Products page link", "sample": "https://chmaba.com/sokha/catalog"},
+    {"token": "{{help_url}}", "label": "Help page link", "sample": "https://chmaba.com/sokha/help"},
     {"token": "{{unsubscribe}}", "label": "Unsubscribe link", "sample": "https://chmaba.com/api/v1/email/unsubscribe?token=..."},
 )
 
-_TOKEN_PATTERN = re.compile(r"\{\{\s*(name|full_name|store|email|unsubscribe)\s*\}\}", re.IGNORECASE)
+_TOKEN_PATTERN = re.compile(
+    r"\{\{\s*(name|full_name|store|email|workspace_url|catalog_url|help_url|unsubscribe)\s*\}\}",
+    re.IGNORECASE,
+)
 
 
 def merge_values(user: User | Contact, company_name: str | None = None, unsubscribe_url_value: str | None = None) -> dict[str, str]:
     # A platform user has ``full_name``; an imported contact has ``name``.
     full_name = (getattr(user, "full_name", None) or getattr(user, "name", None) or "").strip()
     first_name = full_name.split()[0] if full_name else ""
+    username = username_for(getattr(user, "email", None), full_name)
     return {
         "{{name}}": first_name or "there",
         "{{full_name}}": full_name or "there",
         "{{store}}": (company_name or "").strip() or "your store",
         "{{email}}": user.email or "",
+        "{{workspace_url}}": app_url(username, "dashboard"),
+        "{{catalog_url}}": app_url(username, "catalog"),
+        "{{help_url}}": app_url(username, "help"),
         # A signed, one-click opt-out URL. Falls back to the storefront when no
         # per-recipient token is available (e.g. a merge preview).
         "{{unsubscribe}}": unsubscribe_url_value or settings.frontend_url,
