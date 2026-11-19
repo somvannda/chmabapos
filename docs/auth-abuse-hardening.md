@@ -1,7 +1,8 @@
 # Auth abuse hardening
 
 Status: first hardening slice merged (#1071) and deployed to production at
-`843929c`; the remaining items are tracked below with acceptance checks.
+`843929c`; the Cloudflare-only origin allowlist was applied on 19 Nov. The
+remaining items are tracked below with acceptance checks.
 
 Scope: `chmabapos_api` auth surface, `deploy/nginx.conf`, `apps/admin` user status.
 
@@ -250,6 +251,32 @@ Must be `production`. Also verify `TURNSTILE_SECRET_KEY` is non-blank and
 `VITE_TURNSTILE_SITE_KEY` was present in the web build. As of the `843929c`
 deploy both keys are still blank, so the widget is not rendered.
 
+### 4.6 Origin allowlist (applied 19 Nov)
+
+Cloudflare publishes its ranges at `https://www.cloudflare.com/ips-v4`. The
+server now runs:
+
+- `/usr/local/sbin/chmaba-cloudflare-allowlist.sh` builds the `CHMABA_CF` chain
+  with `RELATED,ESTABLISHED`, loopback, `127.0.0.0/8`, `172.16.0.0/12` and every
+  Cloudflare IPv4 range, then drops the rest.
+- `DOCKER-USER` jumps to `CHMABA_CF` for TCP 80/443. Docker-published ports are
+  forwarded, so filtering in `DOCKER-USER` is what actually closes the origin.
+- `chmaba-cloudflare-allowlist.service` runs at boot after Docker;
+  `chmaba-cloudflare-allowlist.timer` refreshes the ranges every six hours and
+  falls back to a built-in list if Cloudflare is unreachable.
+
+Verified after applying:
+
+- direct `https://163.245.204.122/api/v1/health` from a non-Cloudflare host:
+  connection fails;
+- `https://chmaba.com/api/v1/health`: `200`;
+- `https://admin.chmaba.com/`: `200`;
+- `https://shops.chmaba.com/`: `302` to `/stores`.
+
+This is IPv4-only because the origin has no IPv6 listener. If IPv6 is added,
+extend the script with `ips-v6`. The one-off `66.163.112.172` drop was
+superseded and removed; the allowlist now rejects every non-Cloudflare source.
+
 ## 5. Remaining work
 
 ### P0 — before the next signup window
@@ -257,12 +284,14 @@ deploy both keys are still blank, so the widget is not rendered.
 - [x] Deploy the first slice (`843929c`). Production rejects `example.com`
       with `400` and throttles the sixth register attempt with `429`.
 - [x] Suspend the probe users, company and store; revoke their sessions.
-- [ ] **Cloudflare-only origin**: firewall 80/443 to Cloudflare's ranges, or use
-      a Tunnel. The actor reached the origin directly; until this is closed,
-      `CF-Connecting-IP` can be spoofed and per-IP limits can be evaded.
+- [x] **Cloudflare-only origin**: applied 19 Nov. `DOCKER-USER` allows TCP
+      80/443 only from Cloudflare's IPv4 ranges (plus loopback and Docker
+      networks) and drops the rest. Direct-origin requests now fail while
+      Cloudflare serves normally; see §4.6.
 - [ ] **Block the attacker at the edge**: add `66.163.112.172` (and the GTHost
-      ASN if it persists) to a Cloudflare WAF block rule. The temporary
-      `DOCKER-USER` drop is not persistent across reboot.
+      ASN if it persists) to a Cloudflare WAF block rule. The origin allowlist
+      stops direct access, but proxied traffic from that address still reaches
+      Cloudflare.
 - [ ] **Turnstile keys**: create the widget and set
       `TURNSTILE_SECRET_KEY`, `TURNSTILE_SITE_KEY` and
       `VITE_TURNSTILE_SITE_KEY`. Production is still blank today.
