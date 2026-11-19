@@ -133,6 +133,7 @@ class ChangePasswordRequest(BaseModel):
 
 class PasswordResetRequest(BaseModel):
     email: EmailStr
+    turnstile_token: str | None = Field(default=None, max_length=4096)
 
 
 class PasswordResetConfirmRequest(BaseModel):

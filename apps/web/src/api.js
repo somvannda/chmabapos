@@ -53,7 +53,7 @@ export const api = {
   login: (body) => request("/auth/login", json("POST", body)),
   refreshSession,
   logout: () => request("/auth/logout", { method: "POST" }),
-  requestPasswordReset: (email) => request("/auth/request-password-reset", json("POST", { email })),
+  requestPasswordReset: (email, turnstileToken) => request("/auth/request-password-reset", json("POST", { email, turnstile_token: turnstileToken || undefined })),
   resetPassword: (body) => request("/auth/reset-password", json("POST", body)),
   validateResetToken: (token) => request("/auth/reset-password/validate", json("POST", { token })),
   me: (token) => request("/auth/me", { token }),

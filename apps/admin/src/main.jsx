@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import ReactDOM from "react-dom/client";
 import { Eye, EyeOff } from "lucide-react";
+import { TurnstileWidget, TURNSTILE_SITE_KEY } from "./lib/turnstile";
 import PlatformAdmin, { ThemeProvider } from "./App";
 import { api } from "./api";
 import { AUTH_EXPIRED_EVENT } from "./lib/authSession";
@@ -47,6 +48,7 @@ function AdminShell() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
   const [authError, setAuthError] = useState("");
   const [toast, setToast] = useState(null);
@@ -161,7 +163,7 @@ function AdminShell() {
     setAuthBusy(true);
     setAuthError("");
     try {
-      const result = await api.login({ email: email.trim(), password });
+      const result = await api.login({ email: email.trim(), password, turnstile_token: turnstileToken || undefined });
       window.localStorage.setItem(TOKEN_KEY, result.access_token);
       setToken(result.access_token);
       setUser(result.user);
@@ -222,6 +224,7 @@ function AdminShell() {
               <button type="button" aria-label={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword((visible) => !visible)} className="absolute right-2.5 top-2.5 flex h-6 w-6 items-center justify-center rounded-md text-[#7f808a] transition hover:bg-[#2a2b32] hover:text-white">{showPassword ? <EyeOff size={15} /> : <Eye size={15} />}</button>
             </div>
           </label>
+          {TURNSTILE_SITE_KEY && <TurnstileWidget onToken={setTurnstileToken} resetSignal={authError} />}
           {authError && <p className="mt-4 rounded-xl border border-[#5a2a2a] bg-[#3a1e1e] px-3 py-2.5 text-xs text-[#ffb4a8]">{authError}</p>}
           {status === "denied" && <p className="mt-4 rounded-xl border border-[#5a4a1e] bg-[#3a3018] px-3 py-2.5 text-xs text-[#ffe6a8]">This account is not a platform admin.</p>}
           <button type="submit" disabled={authBusy || !email.trim() || !password} className="mt-6 h-11 w-full rounded-xl bg-[#6957f5] text-sm font-bold text-white transition hover:bg-[#7b6bf7] disabled:opacity-40">
