@@ -1,0 +1,284 @@
+# Auth abuse hardening
+
+Status: in progress. The first hardening slice is on `fix/auth-abuse-hardening`
+(PR pending); the remaining items are tracked below with acceptance checks.
+
+Scope: `chmabapos_api` auth surface, `deploy/nginx.conf`, `apps/admin` user status.
+
+## 1. What happened
+
+On 18–19 November 2026 a scripted campaign created a series of probe accounts
+against production. The addresses followed a pattern rather than a customer
+signup:
+
+| Pattern | Examples | Result |
+|---|---|---|
+| Reserved test domains | `artex.probe1@example.com`, `probe1@example.com`, `audit31000+…@example.com`, `qa-…@example.org` | Registered, never verified, never signed in |
+| Public/disposable inboxes | `artex31061a/b@mailinator.com` | Registered, never signed in |
+| Public/disposable inboxes | `artx31061@euploading.com`, `ubalbeldwv@euploading.com`, `artx31196+180903@euploading.com` | **Two signed in**; one created a company |
+| Admin-sounding names | `Probe Admin`, `Qa Adm` | No effect: both remained `platform_role = null` (Tenant user) |
+
+The account IDs (`30788`, `31000`, `31061`, `31196`), the A/B/C names and the
+plus-aliases show deliberate iteration: test a domain, see whether the code
+arrives, move to the next provider. The `+` alias and the names `Probe Admin` /
+`Qa Adm` also test whether the display name or address shape changes
+authorization. It does not: `RegisterRequest` has no role field and Pydantic
+ignores unknown fields.
+
+One probe account (`artx31061@euploading.com`) completed onboarding and created
+a company. That is the highest-risk row and must be inspected, suspended and
+removed together with its company.
+
+The actor also requested a password reset for `duke@chmaba.com`, a platform
+admin.
+
+## 2. Root causes
+
+1. **Registration is open and unthrottled.** `POST /api/v1/auth/register` has no
+   rate limit, no invitation gate and accepts any syntactically valid email.
+   `User.is_active` defaults to `true`, so the admin list shows "Active" before
+   the address is verified.
+2. **Turnstile is configured in code but not enabled in production.** The
+   production web bundle contains no Turnstile widget and the API accepts a
+   registration without a token. `TURNSTILE_SECRET_KEY` and
+   `VITE_TURNSTILE_SITE_KEY` are blank in `deploy/.env`.
+3. **The only auth limiter covered `/api/v1/public/`.** `app/main.py` limited
+   storefront traffic; nothing limited `/api/v1/auth/*`.
+4. **The verification code is checked globally.** `POST /auth/verify-email`
+   looks up `EmailVerificationToken.token_hash` without binding the attempt to
+   the user or email. A six-digit code (`app/security.py`) has only 1,000,000
+   values and there was no attempt limit, so the code space can be walked by a
+   script. The successful sign-ins in this campaign used disposable inboxes
+   instead, but the endpoint is independently exploitable.
+5. **Public inboxes are treated as proof of identity.** `mailinator.com` and
+   `euploading.com` are readable by anyone; a verification code sent there
+   proves nothing about a real merchant.
+6. **Suspended accounts could still call login.** `login` did not check
+   `is_active`; it issued a session, and the token only failed on the next
+   authenticated request.
+7. **The API cannot see the visitor IP.** nginx forwarded `$remote_addr`, which
+   is the Cloudflare edge, and the app trusted it. Per-IP limits and session
+   `ip_address` therefore describe Cloudflare, not the caller.
+
+### Was the admin reset successful?
+
+The reset link is a 32-byte opaque token (`secrets.token_urlsafe(32)`), stored
+only as SHA-256, expires in 30 minutes, is single-use, and is built from the
+fixed `settings.frontend_url` (no Host-header poisoning). A request alone does
+not change the password. **Unless the actor can read `duke@chmaba.com`'s inbox,
+the reset did not complete.**
+
+Confirm with the runbook in §4. A completed reset is visible as a
+`user.password_reset` activity, a used `password_reset_tokens` row, every duke
+session revoked, and a "Password reset" Telegram message. A request alone is
+`user.password_reset_requested`.
+
+### How did they "bypass" email verification?
+
+For the accounts that signed in, they most likely did **not** bypass it: they
+used a disposable inbox and read the code. The `example.com` / `example.org`
+accounts never signed in because those domains cannot receive mail.
+
+There are nevertheless real bypass paths in the code:
+
+- **Code brute force** — six digits, global token lookup, no attempt limit. If
+  the actor requests codes for several accounts they own, the expected search is
+  `1,000,000 / pending_tokens`. A few dozen accounts makes this minutes of work.
+- **`ENVIRONMENT` misconfiguration** — `register` returns
+  `dev_verification_token` when `environment` is `development` or `test`. If a
+  production container ran with the wrong value, the code is handed to the
+  caller. Verify the running container.
+- **Google sign-in** — a verified Google account is trusted immediately. This is
+  legitimate, but it skips the emailed code.
+- **Invitation acceptance** — `accept_team_invitation` creates the user with
+  `is_email_verified=True` and an immediate session. The invitation token is
+  emailed, so it still proves inbox control, but it bypasses the signup code.
+- **Password reset is not a verification bypass** — the token is strong. A reset
+  request alone cannot verify an account or change a password.
+
+## 3. Implemented in this slice
+
+- [x] **Rate-limit every auth POST** in `app/main.py`:
+  login/Google 10/min, register 5/hour, verify 10/min, resend 3/hour,
+  reset request 3/hour, reset confirm/validate 10/hour. Returns `429` with
+  `Retry-After`.
+- [x] **Per-address login lockout** in `login`: five attempts per address in
+  fifteen minutes, cleared by a successful sign-in, so one person's typos do not
+  lock out a shared office IP. Configurable with
+  `AUTH_LOGIN_FAILURE_LIMIT` / `AUTH_LOGIN_FAILURE_WINDOW_MINUTES`.
+- [x] **Per-address email-bomb limits** on resend-verification (1/minute) and
+  password-reset requests (3/hour), with the same vague response so the limit
+  cannot be used to enumerate accounts.
+- [x] **Suspended accounts are refused at login** with `403`, not just on the
+  next authenticated request.
+- [x] **Reserved and disposable domains rejected at registration in
+  production** (`app/services/email_policy.py`): `example.com`/`example.org`,
+  `localhost`, `.test`, plus the common disposable providers including
+  `mailinator.com` and `euploading.com`. The test/development environments keep
+  accepting `example.com` because the API and Playwright suites depend on it.
+- [x] **Real visitor IP** (`app/services/client_ip.py`, `deploy/nginx.conf`):
+  nginx fills `X-Real-IP` from `CF-Connecting-IP`; the app uses it for rate
+  limits, session rows and new-sign-in notices.
+- [x] **Admin list distinguishes Active from Unverified**, and the user detail
+  says "Active · unverified" so the list cannot be mistaken for an approved
+  account.
+- [x] **Tests** (`chmabapos_api/tests/test_auth_hardening.py`) for reserved
+  domains, suspended login, login lockout, register throttling and client-IP
+  resolution.
+- [x] **E2E/dev limits disabled explicitly** in the Playwright API server, the
+  same way the public limits already were, so the suite's many sign-ups do not
+  flake.
+
+## 4. Runbook: contain this incident
+
+### 4.1 Preserve evidence
+
+- Export the Admin → Users CSV.
+- Export `platform_activities`, `auth_sessions`, `password_reset_tokens`,
+  `audit_logs` and the probe company's rows.
+- Keep nginx access logs for 18–19 November.
+
+### 4.2 Check the duke reset
+
+```sql
+select event_type, created_at, details
+from platform_activities
+where email = 'duke@chmaba.com'
+order by created_at desc
+limit 50;
+
+select id, created_at, expires_at, used_at
+from password_reset_tokens
+where user_id = (select id from users where email = 'duke@chmaba.com')
+order by created_at desc;
+
+select id, user_agent, ip_address, created_at, last_used_at, revoked_at
+from auth_sessions
+where user_id = (select id from users where email = 'duke@chmaba.com')
+order by created_at desc
+limit 20;
+
+select action, entity_type, entity_id, details, created_at
+from audit_logs
+where actor_user_id = (select id from users where email = 'duke@chmaba.com')
+order by created_at desc
+limit 50;
+```
+
+- **Only `user.password_reset_requested`** → request only; no password change.
+- **`user.password_reset` + token `used_at`** → the reset completed. Treat the
+  admin account as compromised.
+
+If compromised:
+
+1. Reset duke's password from a clean device; revoke all sessions.
+2. Rotate `JWT_SECRET`, then revoke sessions again (the JWT only shortens the
+   access window; refresh sessions live in the database).
+3. Rotate every secret an admin can reveal: ChmabaPay, SMTP/Resend, AI provider,
+   Telegram bot.
+4. Audit `audit_logs`, new `platform_role` values, plan changes and secret
+   reveals.
+5. Add 2FA before restoring normal admin use.
+6. Brief support: a live tenant may attempt live-chat social engineering.
+
+### 4.3 Suspend and remove
+
+- Suspend every probe user and the company created by
+  `artx31061@euploading.com`.
+- Suspension is enforced by `get_current_user` (`is_active` is checked on every
+  authenticated request), so existing access tokens stop working immediately.
+- Export the company's data before deleting it; add an admin delete action as a
+  follow-up.
+
+### 4.4 Determine the source
+
+The origin logs only see Cloudflare edge addresses. Use **Cloudflare → Security →
+Events** (or Logpush) filtered to:
+
+- `POST /api/v1/auth/register`
+- `POST /api/v1/auth/verify-email`
+- `POST /api/v1/auth/request-password-reset`
+
+Correlate by timestamp with `platform_activities`. A burst of `verify-email`
+requests means code brute force; one or two means a disposable inbox. Block the
+IP/ASN at the edge if it is clearly hostile.
+
+### 4.5 Verify the deployment
+
+```bash
+docker compose -f deploy/docker-compose.prod.yml exec -T api printenv ENVIRONMENT
+```
+
+Must be `production`. Also verify `TURNSTILE_SECRET_KEY` is set and
+`VITE_TURNSTILE_SITE_KEY` was present in the web build.
+
+## 5. Remaining work
+
+### P1 — before the next production signup window
+
+- [ ] **Turnstile on**: set `TURNSTILE_SECRET_KEY` and
+      `VITE_TURNSTILE_SITE_KEY` in `deploy/.env`, rebuild `front`, recreate
+      `api`. Confirm the widget appears and a token-less register is rejected.
+- [ ] **Bind the verification code to the account**. Preferred design: the
+      register response returns a random `verification_id` (128-bit) alongside
+      the user; `POST /auth/verify-email` sends `{verification_id, token}` and
+      the lookup is `id + token_hash`, not hash alone. This keeps six digits for
+      the UI and removes the global code space. It is a cross-client change:
+      `apps/web`, `apps/admin`, `apps/android`, `apps/ios`, the e2e helpers and
+      `packages/api-client`. Ship the optional field first, then require it
+      after the oldest supported client sends it; keep the 10/min verify limit
+      during the transition. The alternative is eight digits plus matching
+      six-to-eight-box UI, which is simpler but still global.
+- [ ] **Move the limiter to shared storage** (Redis/Postgres) before running
+      more than one API worker. `app.services.support.check_rate_limit` is
+      in-process today, so limits multiply by worker count.
+- [ ] **Limit hard by origin**: firewall the VPS to Cloudflare's ranges (or use a
+      Tunnel). `CF-Connecting-IP` is only trustworthy when the origin cannot be
+      reached directly.
+- [ ] **Mandatory TOTP 2FA** for `admin`/`super_admin`, with recovery codes.
+      There is no MFA implementation in this repository today.
+- [ ] **Log failed sign-ins** (email hash + IP + user-agent, never the password)
+      and alert on spikes. Today only successful logins reach
+      `platform_activities`.
+- [ ] **Auto-expire unverified accounts** (7 days) and add an audited admin
+      delete action.
+- [ ] **Cap invitations per company/day**; review `accept-by-owner` (owner/team
+      manager) and make its temp-password handling explicit.
+- [ ] **Email reputation**: replace the static disposable list with a maintained
+      check (MX/reputation/disposable API) and risk-score Gmail-style signups
+      instead of blocking them outright.
+
+### P2 — monitoring and tests
+
+- [ ] Alert when one IP/domain creates more than N accounts per hour, when
+      verification failures spike, when an admin reset is requested, or when an
+      admin signs in from a new country/ASN.
+- [ ] Add tests for Turnstile enforcement, verification-code binding, unverified
+      account expiry, invitation caps and the production `dev_verification_token`
+      guard.
+- [ ] Add a production smoke test that asserts
+      `ENVIRONMENT=production` and Turnstile configured.
+
+## 6. Acceptance checks for this slice
+
+- A production registration for `*@example.com`, `*@mailinator.com` or
+  `*@euploading.com` returns `400`.
+- Six registrations from one address in an hour return `429` on the sixth (with
+  the production limits; tests set their own).
+- Five wrong passwords for one address return `429` on the next attempt; a
+  successful sign-in clears the window.
+- A suspended user with the correct password gets `403`.
+- `X-Real-IP` contains the Cloudflare visitor address in production, and
+  `auth_sessions.ip_address` matches it.
+- The Admin users list shows "Unverified" for never-verified accounts.
+
+## 7. Residual risks
+
+- A distributed botnet can spread attempts across IPs. Per-account limits and
+  Turnstile are the counterweight; shared-state limiting is still required for a
+  multi-worker deployment.
+- A 6-digit code remains guessable in principle until the binding change lands.
+- The static disposable-domain list will age; treat it as a speed bump.
+- Per-address login lockout can be abused to lock a known account for fifteen
+  minutes. The window is short on purpose; add CAPTCHA or progressive delay
+  before lengthening it.
