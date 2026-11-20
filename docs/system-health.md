@@ -22,8 +22,8 @@ check is one row in `system_health_checks`, rewritten by each sweep.
 | `media_storage` | warning | A product image can be written to and deleted from the media root. |
 | `storefront` | warning | The configured storefront host answers `/healthz`. Skipped when `STOREFRONT_URL` is blank. |
 | `pos_web` | warning | The web POS origin answers. Skipped when `FRONTEND_URL` is blank. |
-| `telegram` | info | The bot token is accepted. Skipped when Telegram is not configured. |
-| `ai_assistant` | info | An AI provider and key are configured. Never calls the paid provider. |
+| `telegram` | info | The bot token is accepted. `getMe` is attempted twice with a short connect/read budget, because `api.telegram.org` occasionally stalls for several seconds; only two failures read `degraded`. Skipped when Telegram is not configured. |
+| `ai_assistant` | info | An AI provider and key are configured, read from Admin -> Settings -> AI with the env vars as a fallback. Never calls the paid provider. |
 
 `khqr_generation` is the check that matters most, and it is deliberately judged
 from two sides:
@@ -41,6 +41,24 @@ from two sides:
 A check that is deliberately not running reports `skipped`, never `down`: mock
 payments, an unconfigured storefront host and a missing Telegram bot are valid
 configurations, not outages.
+
+### Why a probe says "timed out"
+
+`_run_probe` caps every probe at `HEALTH_CHECK_TIMEOUT_SECONDS` (12s by default),
+but each outbound probe uses a budget a couple of seconds *below* that ceiling.
+When both were 12s the outer cap usually won the race, so the board could only
+ever say "Timed out after 12s" - and a one-sweep connect stall read exactly like
+a real outage, then recovered two minutes later. That was the "Telegram alerts
+down for 12s" pattern in the transitions log: `api.telegram.org` occasionally
+stalls on DNS or the TLS handshake from the API container, which is a network
+blip, not a broken bot.
+
+The Telegram probe is the one that flaps in practice, so it retries `getMe` once
+inside a 4s connect/read budget. A failure now names the phase (`ConnectTimeout`,
+`ReadTimeout`, `ConnectError`) in the card's detail, and one blip no longer
+changes the recorded state. The trade-off is deliberate: a genuinely slow
+provider is reported before the full 12s ceiling instead of after it.
+
 
 ## Two-hourly payment test
 
@@ -158,10 +176,15 @@ Retention is `HEALTH_CHECK_EVENT_RETENTION_DAYS`.
 
 ## What an operator sees
 
-- **Admin → System health** (`/health`): the overall state, every check with its
-  summary, latency and consecutive failures, and the recent transitions. The
-  "Run checks now" button forces a sweep; it is audited as
-  `system_health.run`.
+- **Admin → System health** (`/health`): the overall state, four counts that
+  double as filters (down, degraded, healthy, not configured), every check
+  grouped by category with latency and how long an unhealthy one has been bad,
+  and the recent transitions. The transition table can be filtered by state
+  (all, down, degraded, recovered) and by dependency, and its "Lasted" column
+  says how long that state held - so a `down → ok` pair two minutes apart reads
+  as a 12s blip rather than an incident. The page refreshes itself every 30
+  seconds while the tab is visible. The "Run checks now" button forces a sweep;
+  it is audited as `system_health.run`.
 - **Admin → Overview**: the badge used to say "All systems operational" no
   matter what. It now reads the last sweep, turns yellow or red when a dependency
   is degraded or down, and links to the health page.
@@ -179,7 +202,7 @@ Retention is `HEALTH_CHECK_EVENT_RETENTION_DAYS`.
 | --- | --- | --- |
 | `HEALTH_CHECK_WORKER_ENABLED` | `true` | Turn the in-process sweep off, e.g. when an external monitor replaces it. |
 | `HEALTH_CHECK_INTERVAL_SECONDS` | `120` | Sweep cadence. |
-| `HEALTH_CHECK_TIMEOUT_SECONDS` | `12` | Per-probe ceiling; a hanging provider is reported as down. |
+| `HEALTH_CHECK_TIMEOUT_SECONDS` | `12` | Per-probe ceiling; outbound HTTP probes finish about two seconds earlier so they can report what stalled instead of a bare "timed out". |
 | `HEALTH_CHECK_ALERT_AFTER_FAILURES` | `2` | Consecutive bad sweeps before paging. |
 | `HEALTH_CHECK_ALERT_COOLDOWN_MINUTES` | `30` | Minimum gap between pages for one check. |
 | `HEALTH_CHECK_EVENT_RETENTION_DAYS` | `90` | Transition history kept. |

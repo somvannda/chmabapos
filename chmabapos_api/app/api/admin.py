@@ -899,7 +899,7 @@ async def system_health(_: User = Depends(get_platform_admin), db: AsyncSession 
     Reads the last sweep; it never probes on its own, so opening the page cannot
     page the operations chat or hammer a provider.
     """
-    return AdminSystemHealthRead.model_validate(await health_service.snapshot(db))
+    return AdminSystemHealthRead.model_validate(await health_service.snapshot(db, events=health_service.ADMIN_EVENT_WINDOW))
 
 
 @router.post("/system-health/run", response_model=AdminSystemHealthRead)
@@ -908,7 +908,7 @@ async def run_system_health(
     db: AsyncSession = Depends(get_db),
 ) -> AdminSystemHealthRead:
     """Probe every dependency now, for an operator who does not want to wait."""
-    result = await health_service.run_checks(db, trigger="manual", alert=False)
+    result = await health_service.run_checks(db, trigger="manual", alert=False, events=health_service.ADMIN_EVENT_WINDOW)
     await audit(db, actor, "system_health.run", "system_health", None, {"overall_status": result["overall_status"]})
     await db.commit()
     return AdminSystemHealthRead.model_validate(result)
