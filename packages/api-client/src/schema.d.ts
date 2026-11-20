@@ -4657,6 +4657,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/journeys/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Journey Health
+         * @description Volume, freshness and partition count for the telemetry pipeline.
+         */
+        get: operations["journey_health_api_v1_admin_journeys_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/sales-analytics": {
         parameters: {
             query?: never;
@@ -7429,6 +7449,41 @@ export interface components {
             total: number;
             /** Stages */
             stages?: components["schemas"]["AdminJourneyStageRead"][];
+        };
+        /**
+         * AdminJourneyHealthRead
+         * @description Whether the telemetry pipeline is alive and current.
+         */
+        AdminJourneyHealthRead: {
+            /**
+             * Window Hours
+             * @default 24
+             */
+            window_hours: number;
+            /**
+             * Events
+             * @default 0
+             */
+            events: number;
+            /**
+             * Sessions
+             * @default 0
+             */
+            sessions: number;
+            /**
+             * Users
+             * @default 0
+             */
+            users: number;
+            /** Last Event At */
+            last_event_at?: string | null;
+            /** Lag Seconds */
+            lag_seconds?: number | null;
+            /**
+             * Partitions
+             * @default 0
+             */
+            partitions: number;
         };
         /**
          * AdminJourneyStageRead
@@ -26328,6 +26383,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminJourneyFunnelRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    journey_health_api_v1_admin_journeys_health_get: {
+        parameters: {
+            query?: {
+                hours?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminJourneyHealthRead"];
                 };
             };
             /** @description Validation Error */

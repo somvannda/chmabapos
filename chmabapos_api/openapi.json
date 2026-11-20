@@ -16771,6 +16771,57 @@
         }
       }
     },
+    "/api/v1/admin/journeys/health": {
+      "get": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Journey Health",
+        "description": "Volume, freshness and partition count for the telemetry pipeline.",
+        "operationId": "journey_health_api_v1_admin_journeys_health_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "hours",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 720,
+              "minimum": 1,
+              "default": 24,
+              "title": "Hours"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminJourneyHealthRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/sales-analytics": {
       "get": {
         "tags": [
@@ -24934,6 +24985,60 @@
         ],
         "title": "AdminJourneyFunnelRead",
         "description": "Companies created in the window and how far that cohort progressed."
+      },
+      "AdminJourneyHealthRead": {
+        "properties": {
+          "window_hours": {
+            "type": "integer",
+            "title": "Window Hours",
+            "default": 24
+          },
+          "events": {
+            "type": "integer",
+            "title": "Events",
+            "default": 0
+          },
+          "sessions": {
+            "type": "integer",
+            "title": "Sessions",
+            "default": 0
+          },
+          "users": {
+            "type": "integer",
+            "title": "Users",
+            "default": 0
+          },
+          "last_event_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Event At"
+          },
+          "lag_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lag Seconds"
+          },
+          "partitions": {
+            "type": "integer",
+            "title": "Partitions",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "AdminJourneyHealthRead",
+        "description": "Whether the telemetry pipeline is alive and current."
       },
       "AdminJourneyStageRead": {
         "properties": {

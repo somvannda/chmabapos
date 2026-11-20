@@ -3325,6 +3325,18 @@ class AdminJourneyFunnelRead(APIModel):
     stages: list[AdminJourneyStageRead] = Field(default_factory=list)
 
 
+class AdminJourneyHealthRead(APIModel):
+    """Whether the telemetry pipeline is alive and current."""
+
+    window_hours: int = 24
+    events: int = 0
+    sessions: int = 0
+    users: int = 0
+    last_event_at: str | None = None
+    lag_seconds: float | None = None
+    partitions: int = 0
+
+
 class AdminSalesSummaryRead(APIModel):
     orders_total: int = 0
     orders_window: int = 0

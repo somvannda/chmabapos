@@ -29,6 +29,7 @@ from app.services.pricing import CYCLE_META, period_end
 from app.services.orders import transaction_usage
 from app.services import health as health_service
 from app.services.activation import build_funnel as build_activation_funnel
+from app.services.activation import build_health as build_activation_health
 from app.schemas import (
     AdminActivityRead,
     AdminAttentionItemRead,
@@ -47,6 +48,7 @@ from app.schemas import (
     AdminFunnelRead,
     AdminFunnelStageRead,
     AdminJourneyFunnelRead,
+    AdminJourneyHealthRead,
     AdminTimeToFirstSaleRead,
     AdminInventorySummaryRead,
     AdminMembershipRead,
@@ -462,6 +464,16 @@ async def activation_journey_funnel(
     are marked ``authoritative: false``.
     """
     return AdminJourneyFunnelRead(**await build_activation_funnel(db, days=days))
+
+
+@router.get("/journeys/health", response_model=AdminJourneyHealthRead)
+async def journey_health(
+    _: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+    hours: int = Query(default=24, ge=1, le=720),
+) -> AdminJourneyHealthRead:
+    """Volume, freshness and partition count for the telemetry pipeline."""
+    return AdminJourneyHealthRead(**await build_activation_health(db, hours=hours))
 
 
 @router.get("/sales-analytics", response_model=AdminSalesAnalyticsRead)

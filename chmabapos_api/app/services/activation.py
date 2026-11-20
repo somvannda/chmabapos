@@ -172,3 +172,47 @@ async def build_funnel(db: AsyncSession, *, days: int = 30) -> dict[str, Any]:
         "total": total,
         "stages": stages,
     }
+
+
+async def build_health(db: AsyncSession, *, hours: int = 24) -> dict[str, Any]:
+    """Ingest health for the telemetry pipeline.
+
+    A funnel nobody can trust is worse than no funnel, so the admin page shows
+    volume, the age of the newest event, and how many partitions exist. Rejected
+    events are not stored (by design); the collector's response is the signal
+    for a client drifting from the registry.
+    """
+    since = datetime.now(timezone.utc) - timedelta(hours=hours)
+    row = (
+        await db.execute(
+            text(
+                """
+                SELECT count(*) AS events,
+                       count(DISTINCT session_id) AS sessions,
+                       count(DISTINCT user_id) AS users,
+                       max(received_at) AS last_event_at
+                FROM analytics_events
+                WHERE occurred_at >= :since
+                """
+            ),
+            {"since": since},
+        )
+    ).mappings().one()
+    partitions = await db.scalar(
+        text(
+            "SELECT count(*) FROM pg_inherits "
+            "JOIN pg_class parent ON parent.oid = pg_inherits.inhparent "
+            "WHERE parent.relname = 'analytics_events'"
+        )
+    )
+    last_event_at = row["last_event_at"]
+    lag = (datetime.now(timezone.utc) - last_event_at).total_seconds() if last_event_at else None
+    return {
+        "window_hours": hours,
+        "events": int(row["events"] or 0),
+        "sessions": int(row["sessions"] or 0),
+        "users": int(row["users"] or 0),
+        "last_event_at": last_event_at.isoformat() if last_event_at else None,
+        "lag_seconds": round(max(lag, 0.0), 1) if lag is not None else None,
+        "partitions": int(partitions or 0),
+    }
