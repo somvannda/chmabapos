@@ -1,13 +1,19 @@
-import { useEffect, useMemo, useState } from "react";
-import { ArrowRight, Check, ChevronDown, ChevronLeft, Store } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowRight, Check, ChevronDown, ChevronLeft, Store, X } from "lucide-react";
 import { Logo, ThemeToggle, Badge, Field, Dropdown, Button } from "../components/ui";
 import { BUSINESS_TYPES } from "../lib/capabilityPacks";
 import { getStoredLanguage, translate } from "../lib/i18n";
 import { analytics } from "../lib/analytics";
+import { SURVEY_ANSWERS, SURVEY_ANSWER_LIMIT, surveyAnswer } from "../lib/abandonSurvey";
 import { countryOptions } from "../lib/countries";
 import { api } from "../api";
 
 const ONBOARDING_STEPS = ["Company details", "A few quick questions", "Choose your plan"];
+
+// The abandon survey is offered at most once per step: after 45 s with no
+// click/keydown, or on pressing Back after at least 15 s on the step.
+const SURVEY_IDLE_MS = 45000;
+const SURVEY_BACK_MIN_MS = 15000;
 
 // Mirrors STORE_COUNT_BANDS / TEAM_SIZE_BANDS in chmabapos_api/app/billing.py.
 // The plan picker sends these bands to /plans/recommended. The bands are cut
@@ -101,7 +107,59 @@ function Onboarding({ step, setStep, data, setData, selectedPlan, setSelectedPla
     analytics.startStep(`onboarding.${step}`);
   }, [step]);
 
+  // One opt-in question per step, never a modal: it sits in the wizard, can be
+  // ignored, and Continue/Back keep working while it is open. Nothing is sent
+  // unless the merchant taps an answer (or presses Send for "Other").
+  const [survey, setSurvey] = useState(null);
+  const askedSteps = useRef(new Set());
+  const stepOpenedAt = useRef(Date.now());
+
+  const askSurvey = useCallback((stepNo) => {
+    if (askedSteps.current.has(stepNo)) return;
+    // Privacy: the prompt must never appear over a password or payment field.
+    // The wizard has neither today; the guard keeps that true if a step gains
+    // one, because this answer would otherwise sit next to a secret.
+    if (typeof document !== "undefined" && document.querySelector('input[type="password"], [data-sensitive]')) return;
+    askedSteps.current.add(stepNo);
+    setSurvey({
+      stepKey: ONBOARDING_STEPS[stepNo - 1] || "unknown",
+      other: false,
+      text: "",
+    });
+  }, []);
+
+  // "Open for 45 s with no click/keydown": every interaction restarts the
+  // timer, so a merchant who is typing or choosing is never interrupted.
+  useEffect(() => {
+    stepOpenedAt.current = Date.now();
+    let timer = null;
+    const restart = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => askSurvey(step), SURVEY_IDLE_MS);
+    };
+    restart();
+    window.addEventListener("keydown", restart, true);
+    window.addEventListener("click", restart, true);
+    return () => {
+      if (timer) clearTimeout(timer);
+      window.removeEventListener("keydown", restart, true);
+      window.removeEventListener("click", restart, true);
+    };
+  }, [step, askSurvey]);
+
+  const recordSurvey = (value) => {
+    if (!survey || !value) return;
+    // Exactly { step_key, answer }: the answer is a code or the trimmed, capped
+    // text. Nothing else from this screen is attached.
+    analytics.track("onboarding.abandon_survey", { step_key: survey.stepKey, answer: value });
+    setSurvey(null);
+  };
+  const answerSurvey = (code) => recordSurvey(surveyAnswer(code));
+  const sendOther = () => recordSurvey(surveyAnswer("other", survey?.text));
+
   const goTo = (next) => {
+    const leaving = step;
+    const leavingMs = Date.now() - stepOpenedAt.current;
     if (next > step) {
       analytics.endStep(`onboarding.${step}`, "onboarding.step_completed", {
         step,
@@ -110,6 +168,9 @@ function Onboarding({ step, setStep, data, setData, selectedPlan, setSelectedPla
     } else if (next < step) {
       analytics.track("onboarding.step_back", { from_step: step, to_step: next });
     }
+    // Moving on without answering counts as "asked": this step never nags again.
+    setSurvey(null);
+    if (next < leaving && leavingMs >= SURVEY_BACK_MIN_MS) askSurvey(leaving);
     setStep(next);
   };
 
@@ -155,6 +216,18 @@ function Onboarding({ step, setStep, data, setData, selectedPlan, setSelectedPla
               <span className="text-xs font-semibold text-[#9697a0]">Step {step} of {ONBOARDING_STEPS.length}</span>
             </div>
           </div>
+          {survey && (
+            <div className="px-6 pt-2 sm:px-10">
+              <SetupSurveyPrompt
+                survey={survey}
+                onAnswer={answerSurvey}
+                onSendOther={sendOther}
+                onOther={() => setSurvey({ ...survey, other: true })}
+                onText={(text) => setSurvey({ ...survey, text })}
+                onDismiss={() => setSurvey(null)}
+              />
+            </div>
+          )}
           <div className={contentClassName}>
             {step === 1 && <SetupCompany data={data} setData={setData} onNext={() => goTo(2)} />}
             {step === 2 && (
@@ -183,6 +256,57 @@ function Onboarding({ step, setStep, data, setData, selectedPlan, setSelectedPla
         </main>
       </div>
     </div>
+  );
+}
+
+function SetupSurveyPrompt({ survey, onAnswer, onSendOther, onOther, onText, onDismiss }) {
+  const canSend = Boolean(surveyAnswer("other", survey.text));
+  return (
+    <section aria-label="Setup help" className="rounded-xl border border-[#e6e5f3] bg-[#faf9ff] px-3.5 py-3">
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-xs font-bold text-[#3d3e47]">Stuck? What&apos;s stopping you?</p>
+        <button
+          type="button"
+          onClick={onDismiss}
+          aria-label="Dismiss this question"
+          className="-mr-1 -mt-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-[#92939d] transition hover:bg-[#efedff] hover:text-[#4f5059] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#6957f5]"
+        >
+          <X size={13} />
+        </button>
+      </div>
+      <div className="mt-2 flex flex-wrap gap-1.5" role="group" aria-label="What's stopping you?">
+        {SURVEY_ANSWERS.map((option) => (
+          <button
+            key={option.code}
+            type="button"
+            aria-pressed={option.code === "other" ? survey.other : undefined}
+            onClick={() => (option.code === "other" ? onOther() : onAnswer(option.code))}
+            className="rounded-full border border-[#ddd9f6] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#4f5059] transition hover:border-[#6957f5] hover:text-[#6957f5] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#6957f5]"
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+      {survey.other && (
+        <div className="mt-2 flex items-center gap-2">
+          <input
+            type="text"
+            value={survey.text}
+            maxLength={SURVEY_ANSWER_LIMIT}
+            onChange={(event) => onText(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter") return;
+              event.preventDefault();
+              if (canSend) onSendOther();
+            }}
+            aria-label="Tell us what's stopping you"
+            placeholder="Tell us in a few words"
+            className="min-w-0 flex-1 rounded-lg border border-[#e4e4eb] bg-white px-2.5 py-1.5 text-[11px] text-[#3d3e47] outline-none focus:border-[#6957f5]"
+          />
+          <Button size="sm" variant="outline" onClick={onSendOther} disabled={!canSend}>Send</Button>
+        </div>
+      )}
+    </section>
   );
 }
 
