@@ -109,6 +109,10 @@ class Settings(BaseSettings):
     ai_api_key: str | None = None
     ai_model: str | None = None
     ai_base_url: str | None = None
+    # Kill switch for the activation insight layer (FR-A11/guardrail 7). The
+    # deterministic funnel and why panels stay on either way; only generation
+    # stops, so a bad prompt cannot keep spending money or producing findings.
+    activation_ai_enabled: bool = True
     # Support assistant (/support/chat). A per-user sliding-window cap protects
     # the paid provider; the rest are hard cost/shape limits on each request.
     support_rate_limit_per_hour: int = 60
