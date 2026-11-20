@@ -230,3 +230,40 @@ def test_sender_override_and_source_mapping() -> None:
     assert mail_service.purpose_from_source("manual") == "marketing"
     assert mail_service.purpose_from_source("drip") == "onboarding"
     assert mail_service.purpose_from_source("not_a_source") is None
+
+
+@pytest.mark.asyncio
+async def test_delivery_uses_the_purpose_sender_unless_an_explicit_from_is_set(monkeypatch) -> None:
+    """The purpose must reach the transport, not just the resolver."""
+    import app.services.mail as mail_service
+
+    captured: list[str] = []
+
+    def fake_smtp(cfg, recipient, subject, text, html, headers, reply_to, from_address=None, from_name=None):
+        captured.append(mail_service.format_from(cfg, from_address, from_name))
+
+    async def fake_settings():
+        return {"mail_provider": "smtp", "mail_from": "no-reply@chmaba.com", "mail_from_name": "Chmaba POS"}
+
+    monkeypatch.setattr(mail_service, "effective_mail_settings", fake_settings)
+    monkeypatch.setattr(mail_service, "_send_smtp", fake_smtp)
+
+    ok, _ = await mail_service.deliver_message_with_id(
+        recipient="owner@example.com",
+        subject="Renew",
+        text="Body",
+        purpose="billing",
+    )
+    assert ok is True
+    assert captured == ["Chmaba POS <billing@chmaba.com>"]
+
+    ok, _ = await mail_service.deliver_message_with_id(
+        recipient="owner@example.com",
+        subject="Campaign",
+        text="Body",
+        from_address="hello@acme.test",
+        from_name="Acme",
+        purpose="billing",
+    )
+    assert ok is True
+    assert captured[-1] == "Acme <hello@acme.test>", "a composer-chosen identity must win"
