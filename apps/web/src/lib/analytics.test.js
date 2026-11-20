@@ -2,11 +2,17 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  authFailureReason,
   createAnalytics,
+  filledFieldCount,
   hashKey,
   isDeadClick,
+  lengthBucket,
+  networkEndpointKey,
+  networkErrorCode,
   normalizeClientRoute,
   routeKeyFor,
+  safeTrack,
   sanitizeProps,
   shouldSample,
 } from "./analytics.js";
@@ -142,3 +148,64 @@ test("a disabled SDK sends nothing", () => {
   analytics.flush();
   assert.equal(sent.length, 0);
 });
+
+test("a failing emitter never breaks the caller", () => {
+  let calls = 0;
+  const throws = {
+    track() {
+      calls += 1;
+      throw new Error("telemetry is down");
+    },
+  };
+  assert.doesNotThrow(() => safeTrack(throws, "ui.click", { element_key: "pay" }));
+  assert.doesNotThrow(() => safeTrack(null, "ui.click"));
+  assert.doesNotThrow(() => safeTrack({}, "ui.click"));
+  assert.equal(calls, 1);
+  const seen = [];
+  safeTrack({ track: (name, props) => seen.push([name, props]) }, "ui.click", { element_key: "pay" });
+  assert.deepEqual(seen, [["ui.click", { element_key: "pay" }]]);
+});
+
+test("a failed request key masks ids and drops the query", () => {
+  assert.equal(
+    networkEndpointKey("POST", "/orders/0b6c2f1a-8f43-4c2e-9f4f-8f0f7a1b2c3d/refund"),
+    "post:/orders/:id/refund",
+  );
+  assert.equal(networkEndpointKey("GET", "/products/42/serials?token=SECRET#x"), "get:/products/:id/serials");
+  assert.equal(networkEndpointKey("GET", "/order/0123456789abcdef0123456789abcdef"), "get:/order/:token");
+  assert.equal(networkEndpointKey("", ""), "get:/");
+});
+
+test("an error code is a machine code or a status bucket, never a message", () => {
+  assert.equal(networkErrorCode(400, { detail: { code: "invalid_sku" } }), "invalid_sku");
+  assert.equal(networkErrorCode(409, { code: "ORDER_ALREADY_PAID" }), "ORDER_ALREADY_PAID");
+  assert.equal(networkErrorCode(500, { detail: "owner@example.com is not allowed" }), "http_500");
+  assert.equal(networkErrorCode(400, { detail: { code: "not a code!" } }), "http_400");
+  assert.equal(networkErrorCode(0, null), "network_error");
+});
+
+test("a pasted link is reported as a bucket, not as its length or text", () => {
+  assert.equal(lengthBucket(0), "empty");
+  assert.equal(lengthBucket(undefined), "empty");
+  assert.equal(lengthBucket(12), "short");
+  assert.equal(lengthBucket(60), "medium");
+  assert.equal(lengthBucket(400), "long");
+});
+
+test("filled fields are counted without reading their values", () => {
+  assert.equal(filledFieldCount({ name: "Nadia", sku: "", price: "0", image: null, track: true, serials: false }), 3);
+  assert.equal(filledFieldCount({}), 0);
+  assert.equal(filledFieldCount(null), 0);
+});
+
+test("an auth failure is classified into a short reason", () => {
+  assert.equal(authFailureReason("Incorrect email or password"), "bad_credentials");
+  assert.equal(authFailureReason("An account with this email already exists"), "email_taken");
+  assert.equal(authFailureReason("Please confirm your email before signing in"), "email_unconfirmed");
+  assert.equal(authFailureReason("Enter the 6-digit code we emailed you"), "invalid_code");
+  assert.equal(authFailureReason("We sent a fresh code. Please enter the newest code from your email."), "code_resent");
+  assert.equal(authFailureReason("Too many attempts"), "rate_limited");
+  assert.equal(authFailureReason(""), "unknown");
+  assert.equal(authFailureReason("Something else"), "rejected");
+});
+

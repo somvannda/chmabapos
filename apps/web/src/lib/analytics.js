@@ -84,6 +84,85 @@ export function shouldSample(rate, random = Math.random) {
   return random() < rate;
 }
 
+// Telemetry is best-effort. A throwing SDK (or a global that replaced it) must
+// never take down the flow it is only observing, so every call site goes
+// through here instead of calling `track` directly.
+export function safeTrack(emitter, name, props) {
+  try {
+    emitter?.track?.(name, props);
+  } catch {
+    /* ignore: analytics must never break a sale or a sign-up */
+  }
+}
+
+// A stable key for a failed request: the verb plus the path with ids masked.
+// Query strings are dropped because verification links carry `?token=`.
+export function networkEndpointKey(method, path) {
+  const verb = String(method || "get").trim().toLowerCase() || "get";
+  const clean = String(path || "").split("#")[0].split("?")[0].trim();
+  if (!clean) return `${verb}:/`;
+  const masked = clean
+    .replace(UUID_RE, ":id")
+    .replace(LONG_HEX_RE, ":token")
+    .replace(/\/\d+(?=\/|$)/g, "/:id");
+  return `${verb}:${masked}`.slice(0, 120);
+}
+
+// The API's machine code when it sent a well-formed one, otherwise a status
+// bucket. Never the human message: that can echo an email or a link back.
+export function networkErrorCode(status, body) {
+  const detail = body && typeof body === "object" ? body.detail : null;
+  const code = body && typeof body === "object"
+    ? (typeof body.code === "string" ? body.code : (detail && typeof detail === "object" && typeof detail.code === "string" ? detail.code : ""))
+    : "";
+  const safe = String(code || "").trim();
+  if (/^[a-z0-9_.-]{1,40}$/i.test(safe)) return safe;
+  return status ? `http_${Number(status) || 0}` : "network_error";
+}
+
+// A KHQR link's length as a coarse bucket: enough to tell a short URL from a
+// long one, never the link itself.
+export function lengthBucket(length) {
+  const size = Number(length) || 0;
+  if (size <= 0) return "empty";
+  if (size < 40) return "short";
+  if (size < 100) return "medium";
+  return "long";
+}
+
+// How many named fields hold anything. Values never leave the browser: the
+// count is all a funnel needs to tell "opened and gave up" from "filled it in".
+export function filledFieldCount(fields) {
+  if (!fields || typeof fields !== "object") return 0;
+  return Object.values(fields).filter((value) => {
+    if (value === null || value === undefined) return false;
+    if (typeof value === "boolean") return value;
+    return String(value).trim() !== "";
+  }).length;
+}
+
+// Classify an auth failure into a short reason. The message itself is never
+// sent: it can quote the email the merchant typed.
+const AUTH_FAILURE_RULES = [
+  [/fresh code|newest code/i, "code_resent"],
+  [/too many|rate limit/i, "rate_limited"],
+  [/captcha|turnstile|human check/i, "captcha"],
+  [/confirm your email|not verified|unverified/i, "email_unconfirmed"],
+  [/already|exists|registered/i, "email_taken"],
+  [/expired/i, "expired"],
+  [/network|offline|fetch|connection/i, "network"],
+  [/password|credential/i, "bad_credentials"],
+  [/code|digit/i, "invalid_code"],
+];
+
+export function authFailureReason(message) {
+  const text = String(message || "");
+  for (const [pattern, reason] of AUTH_FAILURE_RULES) {
+    if (pattern.test(text)) return reason;
+  }
+  return text.trim() ? "rejected" : "unknown";
+}
+
 // A click that changed nothing: same path, no new network request, no dialog.
 // It is the cheapest signal we have that a control looked interactive but was
 // not, which is exactly the "I clicked it three times and nothing happened"

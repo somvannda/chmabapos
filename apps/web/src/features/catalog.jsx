@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { AlertTriangle, ArrowRightLeft, Boxes, Check, CircleDollarSign, Download, Edit3, Eye, Grid2X2, History, List, Package, Plus, RefreshCw, Search, Settings2, Shuffle, Tag, ToggleLeft, ToggleRight, Trash2, TrendingUp, Truck, WalletCards } from "lucide-react";
 import { Modal, Field, Dropdown, IconButton, Button, ProductMark, formatCurrencyAmount, Badge } from "../components/ui";
 import { SmallStat, ConfirmDialog, MetricCard } from "./widgets";
@@ -11,8 +11,9 @@ import { useCapabilities, allowsCapability } from "../lib/capabilities";
 import { emptyModifierRow, modifierRowFrom, buildModifierGroupPayload } from "../lib/modifiers";
 import { isPendingApproval } from "../lib/approvals";
 import { expiryStatus } from "../lib/batchExpiry";
+import { analytics, filledFieldCount, safeTrack } from "../lib/analytics";
 
-function ProductFormModal({ token, storeId, product, categories, modifierGroups = [], onCreate, onUpdate, onClose, notify, loading, onUploadImage, onSupplierPrices }) {
+function ProductFormModal({ token, storeId, product, categories, modifierGroups = [], onCreate, onUpdate, onClose, notify, loading, onUploadImage, onSupplierPrices, entry = "catalog" }) {
   const isEdit = Boolean(product);
   const capabilities = useCapabilities(token, storeId);
   // A pack is surfaced when the store enables it. `null` means the API did not
@@ -51,6 +52,69 @@ function ProductFormModal({ token, storeId, product, categories, modifierGroups 
   // lock it so it cannot drift.
   const skuLockedByVariants = Boolean(isEdit) && isParentSkuLocked((product?.variants || []).length);
   const [skuTouched, setSkuTouched] = useState(Boolean(product?.sku));
+
+  // --- Capture completion ----------------------------------------------------
+  // Field names only. Nothing typed here is read into a prop value: the events
+  // carry a field name, a duration and a count, never the contents.
+  const formKey = isEdit ? "product_edit" : "product_create";
+  const fieldFocusAt = useRef({});
+  const lastField = useRef("");
+  const completedFields = useRef(new Set());
+  const savedRef = useRef(false);
+  const latestForm = useRef({ form: {}, attributes: [] });
+  latestForm.current = { form, attributes };
+  const track = (name, props) => safeTrack(analytics, name, props);
+  const markCompleted = (field, value) => {
+    if (completedFields.current.has(field)) return;
+    const present = typeof value === "boolean" ? value : String(value ?? "").trim() !== "";
+    if (!present) return;
+    completedFields.current.add(field);
+    const started = fieldFocusAt.current[field];
+    track("ui.form_field_completed", { form: formKey, field, duration_ms: started ? Math.max(Date.now() - started, 0) : undefined });
+  };
+  const onFormFocus = (event) => {
+    const field = event.target?.name;
+    if (!field) return;
+    lastField.current = field;
+    fieldFocusAt.current[field] = Date.now();
+    track("ui.form_field_focused", { form: formKey, field });
+  };
+  const onFormChange = (event) => {
+    const field = event.target?.name;
+    if (!field) return;
+    lastField.current = field;
+    markCompleted(field, event.target.type === "checkbox" ? event.target.checked : event.target.value);
+  };
+  useEffect(() => {
+    if (!isEdit) track("product.create_opened", { entry });
+  }, []);
+  useEffect(() => () => {
+    // Closing the modal without saving is the drop-off the funnel is looking
+    // for: which field they last touched, and how much they had filled in.
+    if (savedRef.current) return;
+    const { form: finalForm, attributes: finalAttributes } = latestForm.current;
+    track("ui.form_abandoned", {
+      form: formKey,
+      last_field: lastField.current || "none",
+      filled_fields: filledFieldCount({
+        name: finalForm.name,
+        sku: finalForm.sku,
+        price: finalForm.price,
+        cost_price: finalForm.costPrice,
+        tax_rate: finalForm.taxRate,
+        category: finalForm.categoryId,
+        unit: finalForm.unit,
+        modifier_group: finalForm.modifierGroupId,
+        opening_stock: finalForm.stock,
+        reorder_point: finalForm.reorderPoint,
+        description: finalForm.description,
+        image: finalForm.image,
+        barcode: finalForm.barcode,
+        brand: finalForm.brand,
+        attributes: finalAttributes.length,
+      }),
+    });
+  }, []);
 
   const updateName = (value) => {
     setForm((current) => {
@@ -122,6 +186,7 @@ function ProductFormModal({ token, storeId, product, categories, modifierGroups 
         : await onCreate({ ...payload, opening_stock: form.trackSerials ? 0 : (Number(form.stock) || 0), reorder_point: Number(form.reorderPoint) || 10 });
       if (isPendingApproval(saved)) { onClose(); return; }
       if (saved) {
+        savedRef.current = true;
         if (imageFile) {
           const uploaded = await onUploadImage?.(saved.id, imageFile);
           if (uploaded) saved.image = uploaded.image;
@@ -130,22 +195,24 @@ function ProductFormModal({ token, storeId, product, categories, modifierGroups 
         onClose();
       }
     } catch (requestError) {
+      const missing = !form.name.trim() ? "name" : !form.sku.trim() ? "sku" : !(Number(form.price) >= 0) ? "price" : "server";
+      track("ui.form_validation_failed", { form: formKey, field: missing, rule: requestError?.status === 400 ? "invalid" : "request_failed" });
       setError(requestError.message || "Could not save product");
     } finally {
       setBusy(false);
     }
   };
 
-  return <Modal open onClose={onClose} title={isEdit ? `Edit ${product.name}` : "Add product"} description={isEdit ? "Update product details and image." : "Add a new product to your catalog."} width="max-w-[820px]" dismissOnBackdrop={false}><form onSubmit={submit} className="space-y-3">
-    <div className="grid gap-3 sm:grid-cols-2"><Field label="Name" required value={form.name} onChange={(event) => updateName(event.target.value)} list="chmaba-product-names" />{skuLockedByVariants ? <Field label="SKU" value={form.sku} disabled hint="Locked while this product has variants." /> : <Field label="SKU" required value={form.sku} onChange={(event) => { setSkuTouched(true); setForm({ ...form, sku: event.target.value }); }} list="chmaba-product-skus" />}</div>
-    <div className="grid gap-3 sm:grid-cols-3"><Field label="Price" type="number" min="0" step="0.01" required value={form.price} onChange={(event) => setForm({ ...form, price: event.target.value })} /><Field label="Cost price" type="number" min="0" step="0.01" value={form.costPrice} onChange={(event) => setForm({ ...form, costPrice: event.target.value })} /><Field label="Tax rate %" type="number" min="0" step="0.01" value={form.taxRate} onChange={(event) => setForm({ ...form, taxRate: event.target.value })} placeholder="Store default" /></div>
+  return <Modal open onClose={onClose} title={isEdit ? `Edit ${product.name}` : "Add product"} description={isEdit ? "Update product details and image." : "Add a new product to your catalog."} width="max-w-[820px]" dismissOnBackdrop={false}><form onSubmit={submit} onFocus={onFormFocus} onChange={onFormChange} className="space-y-3">
+    <div className="grid gap-3 sm:grid-cols-2"><Field label="Name" name="name" required value={form.name} onChange={(event) => updateName(event.target.value)} list="chmaba-product-names" />{skuLockedByVariants ? <Field label="SKU" name="sku" value={form.sku} disabled hint="Locked while this product has variants." /> : <Field label="SKU" name="sku" required value={form.sku} onChange={(event) => { setSkuTouched(true); setForm({ ...form, sku: event.target.value }); }} list="chmaba-product-skus" />}</div>
+    <div className="grid gap-3 sm:grid-cols-3"><Field label="Price" name="price" type="number" min="0" step="0.01" required value={form.price} onChange={(event) => setForm({ ...form, price: event.target.value })} /><Field label="Cost price" name="cost_price" type="number" min="0" step="0.01" value={form.costPrice} onChange={(event) => setForm({ ...form, costPrice: event.target.value })} /><Field label="Tax rate %" name="tax_rate" type="number" min="0" step="0.01" value={form.taxRate} onChange={(event) => setForm({ ...form, taxRate: event.target.value })} placeholder="Store default" /></div>
     {isEdit && onSupplierPrices && <p className="text-[11px] leading-4 text-[#92939d]">Cost price is the catalogue fallback. Buying the same variant from several suppliers? <button type="button" onClick={() => onSupplierPrices(product)} className="font-semibold text-[#6957f5]">Set supplier prices</button></p>}
-    <div className="grid gap-3 sm:grid-cols-2">{show("barcode", Boolean(product?.barcode)) && <Field label="Barcode" value={form.barcode} onChange={(event) => setForm({ ...form, barcode: event.target.value })} placeholder="Scan or type" />}{show("brand", Boolean(product?.brand)) && <Field label="Brand" value={form.brand} onChange={(event) => setForm({ ...form, brand: event.target.value })} placeholder="e.g. Apple" list="chmaba-brands" />}</div>
-    <div className="grid gap-3 sm:grid-cols-3"><label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Category</span><Dropdown value={form.categoryId} onChange={(v) => setForm({ ...form, categoryId: v })} options={categoryOptions} /></label>{show("unit_of_measure", Boolean(form.unit && form.unit !== "each")) && <label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Unit</span><Dropdown value={form.unit} onChange={(v) => setForm({ ...form, unit: v })} options={units.map((value) => ({ value, label: value }))} /></label>}{show("modifiers", Boolean(product?.modifier_group_id)) && <label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Modifier group</span><Dropdown value={form.modifierGroupId} onChange={(v) => setForm({ ...form, modifierGroupId: v })} options={[{ value: "", label: "None" }, ...modifierGroups.map((group) => ({ value: String(group.id), label: group.name }))]} /></label>}</div>
-    <div className="grid gap-3 sm:grid-cols-2">{!isEdit && !form.trackSerials ? <Field label="Opening stock" type="number" min="0" value={form.stock} onChange={(event) => setForm({ ...form, stock: event.target.value })} /> : !isEdit ? <div className="rounded-xl border border-[#e9e9ef] bg-[#fafafd] px-3 py-2.5 text-[11px] leading-4 text-[#92939d]">Serial-tracked products start at 0. Add units and their serials from <span className="font-semibold text-[#4f5059]">Inventory → Receive stock</span>.</div> : <Field label="In stock" value={form.stock} disabled />}<Field label="Reorder point" type="number" min="0" value={form.reorderPoint} onChange={(event) => setForm({ ...form, reorderPoint: event.target.value })} /></div>
-    <label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Description</span><textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={2} className="w-full rounded-xl border border-[#dfdfe8] px-3.5 py-2.5 text-sm outline-none focus:border-[#887bf3]" /></label>
-    <div className="flex flex-wrap gap-4"><label className="flex items-center gap-2 text-xs font-semibold text-[#4f5059]"><input type="checkbox" checked={form.trackInventory} onChange={(event) => setForm({ ...form, trackInventory: event.target.checked })} /> Track inventory</label>{show("serials", form.trackSerials) && <label className="flex items-center gap-2 text-xs font-semibold text-[#4f5059]"><input type="checkbox" checked={form.trackSerials} onChange={(event) => setForm({ ...form, trackSerials: event.target.checked })} /> Track serials / IMEI</label>}</div>
-    <div className="rounded-xl border border-[#e9e9ef] p-3"><div className="flex items-center justify-between"><span className="text-xs font-semibold text-[#4f5059]">Attributes</span><button type="button" onClick={addAttribute} className="text-xs font-semibold text-[#6957f5]">+ Add</button></div>{attributes.length === 0 ? <p className="mt-2 text-[11px] text-[#92939d]">Optional fields like model, color, warranty.</p> : <div className="mt-2 space-y-2">{attributes.map((row, index) => <div key={index} className="flex items-center gap-2"><input value={row.key} onChange={(event) => updateAttribute(index, { key: event.target.value })} placeholder="Key" list="chmaba-attr-keys" className="h-9 min-w-0 flex-1 rounded-lg border border-[#dfdfe8] px-3 text-xs outline-none focus:border-[#887bf3]" /><input value={row.value} onChange={(event) => updateAttribute(index, { value: event.target.value })} placeholder="Value" list={`chmaba-attr-${index}`} className="h-9 min-w-0 flex-1 rounded-lg border border-[#dfdfe8] px-3 text-xs outline-none focus:border-[#887bf3]" /><IconButton label="Remove attribute" onClick={() => removeAttribute(index)}><Trash2 size={15} /></IconButton></div>)}</div>}</div>
+    <div className="grid gap-3 sm:grid-cols-2">{show("barcode", Boolean(product?.barcode)) && <Field label="Barcode" name="barcode" value={form.barcode} onChange={(event) => setForm({ ...form, barcode: event.target.value })} placeholder="Scan or type" />}{show("brand", Boolean(product?.brand)) && <Field label="Brand" name="brand" value={form.brand} onChange={(event) => setForm({ ...form, brand: event.target.value })} placeholder="e.g. Apple" list="chmaba-brands" />}</div>
+    <div className="grid gap-3 sm:grid-cols-3"><label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Category</span><Dropdown value={form.categoryId} onChange={(v) => { markCompleted("category", v); setForm({ ...form, categoryId: v }); }} options={categoryOptions} /></label>{show("unit_of_measure", Boolean(form.unit && form.unit !== "each")) && <label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Unit</span><Dropdown value={form.unit} onChange={(v) => { markCompleted("unit", v); setForm({ ...form, unit: v }); }} options={units.map((value) => ({ value, label: value }))} /></label>}{show("modifiers", Boolean(product?.modifier_group_id)) && <label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Modifier group</span><Dropdown value={form.modifierGroupId} onChange={(v) => { markCompleted("modifier_group", v); setForm({ ...form, modifierGroupId: v }); }} options={[{ value: "", label: "None" }, ...modifierGroups.map((group) => ({ value: String(group.id), label: group.name }))]} /></label>}</div>
+    <div className="grid gap-3 sm:grid-cols-2">{!isEdit && !form.trackSerials ? <Field label="Opening stock" name="opening_stock" type="number" min="0" value={form.stock} onChange={(event) => setForm({ ...form, stock: event.target.value })} /> : !isEdit ? <div className="rounded-xl border border-[#e9e9ef] bg-[#fafafd] px-3 py-2.5 text-[11px] leading-4 text-[#92939d]">Serial-tracked products start at 0. Add units and their serials from <span className="font-semibold text-[#4f5059]">Inventory → Receive stock</span>.</div> : <Field label="In stock" name="opening_stock" value={form.stock} disabled />}<Field label="Reorder point" name="reorder_point" type="number" min="0" value={form.reorderPoint} onChange={(event) => setForm({ ...form, reorderPoint: event.target.value })} /></div>
+    <label className="block"><span className="mb-1.5 block text-xs font-semibold text-[#4f5059]">Description</span><textarea name="description" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={2} className="w-full rounded-xl border border-[#dfdfe8] px-3.5 py-2.5 text-sm outline-none focus:border-[#887bf3]" /></label>
+    <div className="flex flex-wrap gap-4"><label className="flex items-center gap-2 text-xs font-semibold text-[#4f5059]"><input type="checkbox" name="track_inventory" checked={form.trackInventory} onChange={(event) => setForm({ ...form, trackInventory: event.target.checked })} /> Track inventory</label>{show("serials", form.trackSerials) && <label className="flex items-center gap-2 text-xs font-semibold text-[#4f5059]"><input type="checkbox" name="track_serials" checked={form.trackSerials} onChange={(event) => setForm({ ...form, trackSerials: event.target.checked })} /> Track serials / IMEI</label>}</div>
+    <div className="rounded-xl border border-[#e9e9ef] p-3"><div className="flex items-center justify-between"><span className="text-xs font-semibold text-[#4f5059]">Attributes</span><button type="button" onClick={addAttribute} className="text-xs font-semibold text-[#6957f5]">+ Add</button></div>{attributes.length === 0 ? <p className="mt-2 text-[11px] text-[#92939d]">Optional fields like model, color, warranty.</p> : <div className="mt-2 space-y-2">{attributes.map((row, index) => <div key={index} className="flex items-center gap-2"><input name="attribute_key" value={row.key} onChange={(event) => updateAttribute(index, { key: event.target.value })} placeholder="Key" list="chmaba-attr-keys" className="h-9 min-w-0 flex-1 rounded-lg border border-[#dfdfe8] px-3 text-xs outline-none focus:border-[#887bf3]" /><input name="attribute_value" value={row.value} onChange={(event) => updateAttribute(index, { value: event.target.value })} placeholder="Value" list={`chmaba-attr-${index}`} className="h-9 min-w-0 flex-1 rounded-lg border border-[#dfdfe8] px-3 text-xs outline-none focus:border-[#887bf3]" /><IconButton label="Remove attribute" onClick={() => removeAttribute(index)}><Trash2 size={15} /></IconButton></div>)}</div>}</div>
     <div className="flex items-center gap-3 rounded-xl border border-[#e9e9ef] p-3">{form.image ? <img src={form.image} alt="preview" className="h-12 w-12 rounded-lg object-cover" /> : <Package size={18} className="text-[#a1a2ab]" />}<label className="text-xs font-semibold text-[#6957f5]"><input type="file" accept="image/*" className="hidden" onChange={readImage} /><span className="cursor-pointer">Upload product image</span></label><button type="button" onClick={() => setShowLibrary((current) => !current)} className="text-xs font-semibold text-[#6957f5]">{showLibrary ? "Hide library" : "Choose from library"}</button>{form.image && <IconButton label="Remove image" onClick={() => setForm({ ...form, image: "" })}><Trash2 size={15} /></IconButton>}</div>
     {showLibrary && <div className="rounded-xl border border-[#e9e9ef] p-3"><MediaLibraryGrid token={token} notify={notify} maxHeightClass="max-h-[240px]" onPick={(url) => { setForm((current) => ({ ...current, image: url })); setShowLibrary(false); }} /></div>}
     {error && <p className="rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2 text-xs text-[#c2564b]">{error}</p>}
