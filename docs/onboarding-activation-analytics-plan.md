@@ -9,8 +9,9 @@ activation rate. Covers `apps/web` (merchant POS), `apps/storefront`,
 `apps/android` and `apps/ios` at milestone level, the API, and a new
 `apps/admin` journey explorer.
 
-Related: `docs/guided-setup-and-onboarding-plan.md` (the coach this plan
-measures), `docs/architecture.md`, `docs/system-health.md`,
+Related: `docs/activation-intelligence-requirements.md` (master requirements,
+delivery WBS and the AI insight layer), `docs/guided-setup-and-onboarding-plan.md`
+(the coach this plan measures), `docs/architecture.md`, `docs/system-health.md`,
 `docs/support-operations.md`, `chmabapos_api/app/api/admin.py`
 (`/admin/funnel`, `/admin/retention`), `chmabapos_api/app/api/v1.py`
 (`/auth/register`, `/auth/verify-email`, `/workspaces/setup`,
