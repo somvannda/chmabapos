@@ -400,6 +400,31 @@ def _subjects_and_bodies() -> dict[str, str]:
             cta_href=f"{APP}/sokha/billing?renew=pro&cycle=monthly&pay=1",
             footnote=f'Billing &amp; plans: <a href="{APP}/sokha/billing" style="color:#6957f5;">{APP}/sokha/billing</a>',
         ),
+        "billing.price_change": _email(
+            "Your Pro renewal price changes to $14.99/month",
+            "$4.99 → $14.99 monthly from 04 Dec 2026.",
+            _paragraphs(
+                "The price of the Pro plan is changing from $4.99 to $14.99 (monthly).",
+                "Nothing changes before 04 Dec 2026: your current period keeps the price you already paid. "
+                "When it ends, your renewal is $14.99 (monthly).",
+            )
+            + table(
+                ["", ""],
+                [
+                    ["Plan", "Pro"],
+                    ["Current period", "$4.99 / monthly"],
+                    ["Renewal", "$14.99 / monthly"],
+                    ["Renews after", "04 Dec 2026"],
+                ],
+                aligns=["left", "right"],
+                show_header=False,
+            )
+            + '<p style="margin:18px 0 0 0;">Review the plan and its limits under Billing &amp; plans in your workspace.</p>',
+            "Billing",
+            cta_label="Review Billing & plans",
+            cta_href=f"{APP}/sokha/billing",
+            footnote=f'Billing &amp; plans: <a href="{APP}/sokha/billing" style="color:#6957f5;">{APP}/sokha/billing</a>',
+        ),
         "billing.plan_expired": _email(
             "Your Pro plan has expired",
             "Your paid plan has expired. Your workspace is on the Free plan.",

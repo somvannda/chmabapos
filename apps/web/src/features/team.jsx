@@ -5,7 +5,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { MetricCard, SmallStat, ConfirmDialog } from "./widgets";
 import { api } from "../api";
 import { RolesCard } from "./roles";
-import { formatDate, formatDateTime } from "../lib/dateFormat";
+import { formatDate, formatDateTime, toDate } from "../lib/dateFormat";
 import { dashboardPeriods, trailingWindow, previousPeriod, timeGreeting, formatCount, inventorySnapshot, topProducts, salesMix, recentTransactions, runRate, headlineMetrics, needsAttention } from "../lib/dashboard";
 
 function PlanScheduleModal({ plan, currentPlan, subscription, stores, members, renewLabel, onClose, onConfirm, saving }) {
@@ -154,6 +154,17 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
   const graceLabel = subscription?.grace_ends_at ? formatDate(subscription.grace_ends_at) : null;
   const inGrace = Boolean(subscription?.in_grace);
   const usableUntilLabel = inGrace ? graceLabel : activeUntilLabel;
+  // The catalog row is what the next renewal charges, while ``currentPlan`` is
+  // the purchased snapshot the owner is on today. Showing both makes a price
+  // change visible instead of surprising them at the QR.
+  const renewalTarget = plans.find((plan) => plan.code === subscription?.plan_code) || null;
+  const renewalPrice = renewalTarget ? perMonth(renewalTarget, activeCycle) : 0;
+  const renewalPriceChanged = Boolean(renewalTarget && currentPlan && Math.abs(renewalPrice - currentPrice) > 0.004);
+  const renewalBase = paidAhead ? subscription?.paid_through : subscription?.ends_at;
+  const renewalStart = toDate(renewalBase);
+  if (renewalStart) renewalStart.setDate(renewalStart.getDate() + 1);
+  const renewalFromLabel = inGrace ? null : renewalStart ? formatDate(renewalStart) : null;
+  const cycleTotal = (plan, cycleKey) => moneyUsd(perMonth(plan, cycleKey) * cycleMeta(cycleKey).multiplier);
   // Any different plan can be scheduled for the period end; a paid upgrade also
   // offers an instant checkout ("money wins").
   const canSchedule = (plan) => onPaidActive && !isCurrent(plan);
@@ -212,6 +223,12 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
             <p className="text-[10px] font-bold uppercase tracking-[.14em] text-[#c4f27c]">Current plan</p>
             <h3 className="mt-3 text-2xl font-extrabold capitalize tracking-[-.05em]">{currentPlan?.name || subscription?.plan_code || "Free"}</h3>
             <p className="mt-1 text-xs text-[#92939d]">{subscription?.status === "pending" ? "Payment required to unlock this plan" : inGrace ? `Usable until ${graceLabel} - renew to avoid pausing stores or team` : activeUntilLabel ? `Active until ${activeUntilLabel}` : "No renewal date"}</p>
+            {onPaidActive && renewalTarget && (
+              <p className="mt-2 text-[11px] font-semibold text-[#cfcff4]">
+                Renews at {moneyUsd(renewalPrice)}/month{renewalFromLabel ? ` from ${renewalFromLabel}` : ""}
+                {renewalPriceChanged && <span className="text-[#f2c87a]"> · price changes from {moneyUsd(currentPrice)}</span>}
+              </p>
+            )}
           </div>
           <div className="text-right">
             <p className="text-3xl font-extrabold">{moneyUsd(currentPrice)}<span className="text-xs font-medium text-[#92939d]"> / month</span></p>
@@ -262,6 +279,11 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
                     ? `Active until ${endsLabel}. Renewing now adds the next period after that, so you lose no time you have already paid for.`
                     : "Renew to keep your workspace running without interruption."}
               </p>
+              {renewPlan.code === subscription?.plan_code && renewalPriceChanged && (
+                <p className="mt-1 text-xs font-bold text-[#a26b12]">
+                  Your renewal price changes from {moneyUsd(currentPrice)}/month to {moneyUsd(perMonth(renewPlan, renewCycleKey))}/month.
+                </p>
+              )}
             </div>
             <div className="flex shrink-0 gap-2">
               <Button onClick={() => onCheckout?.(renewPlan.code, renewCycleKey)} disabled={loading || Boolean(pending)}>{pending ? "Payment open" : `Pay ${renewAmountText} with KHQR`}</Button>
@@ -310,7 +332,7 @@ function LiveBillingView({ subscription, plans, stores, members, billingPayments
             const includeFree = plan.code === "free" && !onPaidActive;
             const renewCard = current && isPaidTarget && subscription?.status === "active";
             const buttonDisabled = (current && !renewCard) || loading || (subscription?.status === "pending" && !current);
-            const buttonLabel = renewCard ? `Renew & extend ${plan.name}` : current ? "Current plan" : scheduleOnly && plan.code === "free" ? "Cancel at period end" : scheduleOnly ? `Schedule ${plan.name}` : upgradeNow ? `Upgrade to ${plan.name} now` : includeFree ? "Included" : chooseCard ? `Choose ${plan.name}` : "Unavailable";
+            const buttonLabel = renewCard ? `Renew & extend ${plan.name} · ${cycleTotal(plan, billingCycle)}` : current ? "Current plan" : scheduleOnly && plan.code === "free" ? "Cancel at period end" : scheduleOnly ? `Schedule ${plan.name}` : upgradeNow ? `Upgrade to ${plan.name} now` : includeFree ? "Included" : chooseCard ? `Choose ${plan.name}` : "Unavailable";
             const buttonVariant = renewCard || upgradeNow || chooseCard ? "primary" : current ? "outline" : scheduleOnly ? "soft" : "outline";
             const buttonAction = () => {
               if (renewCard) { onCheckout(plan.code, billingCycle); return; }

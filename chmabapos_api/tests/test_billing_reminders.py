@@ -7,11 +7,13 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select, text
 
+from app.billing import plan_terms
 from app.db import SessionLocal
 from app.main import app
-from app.models import BillingReminder, EmailSend, EmailSuppression, Notification, Subscription
+from app.models import BillingReminder, EmailSend, EmailSuppression, Notification, Plan, Subscription
 from app.services.billing_emails import BILLING_REMINDER_SOURCE
 from app.services.mailing import MAX_SEND_LIMIT, send_pending_emails
+from app.services.pricing import period_total_label
 from app.services.reminders import run_reminder_job
 
 EMAIL_SUFFIX = "remind"
@@ -210,6 +212,53 @@ async def test_reminder_links_the_owner_into_billing_and_queues_the_email() -> N
         assert len(queued) == 1
         assert queued[0].status == "queued"
         assert "/billing?renew=pro&amp;cycle=monthly&amp;pay=1" in queued[0].body_html
+        assert "price changes" not in queued[0].body_html, "an unchanged price adds no noise"
+    finally:
+        await cleanup([email], company_id)
+
+
+@pytest.mark.asyncio
+async def test_reminder_calls_out_a_renewal_price_change() -> None:
+    """A grandfathered period renews at the live price, so say so explicitly."""
+    email = f"billing-{EMAIL_SUFFIX}-{uuid.uuid4().hex[:8]}@example.com"
+    company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            workspace, _ = await create_paid_workspace(client, email, datetime.now(timezone.utc) + timedelta(days=5))
+            company_id = workspace["company"]["id"]
+        async with SessionLocal() as db:
+            plan = await db.get(Plan, "pro")
+            assert plan is not None
+            subscription = (
+                await db.execute(
+                    select(Subscription).where(
+                        Subscription.company_id == uuid.UUID(company_id),
+                        Subscription.plan_code == "pro",
+                        Subscription.status == "active",
+                    )
+                )
+            ).scalars().one()
+            terms = plan_terms(plan)
+            terms["monthly_price"] = "0.99"
+            subscription.plan_terms = terms
+            await db.commit()
+            new_amount = period_total_label(plan.monthly_price, "monthly")
+
+        async with SessionLocal() as db:
+            await run_reminder_job(db)
+            await db.commit()
+            queued = (
+                await db.execute(
+                    select(EmailSend).where(
+                        EmailSend.recipient_email == email,
+                        EmailSend.source == BILLING_REMINDER_SOURCE,
+                    )
+                )
+            ).scalars().one()
+        assert queued.status == "queued"
+        assert "Your renewal price changes from $0.99 to $" in queued.body_html
+        assert f"to ${new_amount} (monthly)" in queued.body_html
+        assert "(was $0.99)" in queued.subject
     finally:
         await cleanup([email], company_id)
 

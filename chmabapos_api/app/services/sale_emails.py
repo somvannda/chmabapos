@@ -49,6 +49,7 @@ TRANSACTIONAL_SOURCES = frozenset(
         "billing_failure",
         "billing_reminder",
         "billing_expiry",
+        "billing_price_change",
         "quota_warning",
     }
 )

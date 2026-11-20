@@ -21,6 +21,7 @@ from app.config import settings
 from app.billing import FREE_PLAN_CODE, load_entitlement, plan_terms
 from app.deps import get_db, get_platform_admin, require_super_admin
 from app.email import html_to_text, send_email
+from app.services.billing_emails import queue_plan_price_change_notices
 from app.services.billing_lifecycle import enforce_plan_capacity, pause_stores_over_capacity, record_capacity_actions, restore_capacity, revoke_staff_over_capacity
 from app.services.email_layout import data_table, transactional_email
 from app.models import AuditLog, AuthSession, BillingPayment, BillingRefund, Company, Contact, ContactCategory, Customer, EmailSend, EmailSuppression, EmailTemplate, Guide, GuideCategory, HelpArticle, InventoryBalance, MailingCampaign, MailingDripDelivery, Membership, MembershipStore, Order, OrderItem, OrderTender, Plan, PlatformActivity, Product, ProductVariant, Refund, Store, Subscription, SupportChatConversation, SupportChatMessage, SupportTicket, SupportTicketAttachment, SupportTicketMessage, User, VariantInventoryBalance, utcnow
@@ -1811,7 +1812,18 @@ async def update_plan(plan_code: str, payload: AdminPlanUpdateRequest, actor: Us
         setattr(plan, attr, value)
     if not changes:
         return PlanRead.model_validate(plan)
-    await audit(db, actor, "admin.plan_updated", "plan", None, {**changes, "previous": previous, "code": plan.code})
+    notice_count = 0
+    if "monthly_price" in changes:
+        notice_count = await queue_plan_price_change_notices(
+            db,
+            plan=plan,
+            old_price=Decimal(previous["monthly_price"]),
+            new_price=plan.monthly_price,
+        )
+    details = {**changes, "previous": previous, "code": plan.code}
+    if notice_count:
+        details["price_change_notified"] = notice_count
+    await audit(db, actor, "admin.plan_updated", "plan", None, details)
     await db.commit()
     await db.refresh(plan)
     return PlanRead.model_validate(plan)
@@ -3475,7 +3487,7 @@ async def admin_update_support_ticket(
                     body=body_html,
                     badge="Support",
                 )
-                await send_email(merchant.email, subjects[payload.status], html_to_text(html), html=html)
+                await send_email(merchant.email, subjects[payload.status], html_to_text(html), html=html, purpose="support")
             except Exception:
                 pass
     return SupportTicketRead.model_validate(row)
@@ -3558,6 +3570,7 @@ async def admin_reply_support_ticket(
                     f"New reply on your support request {row.reference}",
                     html_to_text(html),
                     html=html,
+                    purpose="support",
                 )
             except Exception:
                 pass
