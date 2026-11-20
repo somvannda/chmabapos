@@ -4677,6 +4677,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/journeys/why": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Journey Stage Why
+         * @description Why merchants leak at one stage: form errors, API failures, clicks, dwell.
+         *
+         *     Every number is scoped to the routes the stage owns, and internal/staff
+         *     traffic is excluded inside the query. An unknown stage is a 400 listing the
+         *     stages this report understands, never an empty panel.
+         */
+        get: operations["journey_stage_why_api_v1_admin_journeys_why_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/journeys/sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Journey Stage Sessions
+         * @description Sessions whose last known route is the stage's and that never moved on.
+         */
+        get: operations["journey_stage_sessions_api_v1_admin_journeys_sessions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/journeys/sessions/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Journey Session Timeline
+         * @description One session's ordered timeline. Read-only; internal sessions are hidden.
+         */
+        get: operations["journey_session_timeline_api_v1_admin_journeys_sessions__session_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/sales-analytics": {
         parameters: {
             query?: never;
@@ -7431,6 +7495,34 @@ export interface components {
             active_products: number;
         };
         /**
+         * AdminJourneyClickRead
+         * @description A dead or enraged click target. The key is stable, never a free-text label.
+         */
+        AdminJourneyClickRead: {
+            /** Element Key */
+            element_key?: string | null;
+            /**
+             * Count
+             * @default 0
+             */
+            count: number;
+        };
+        /**
+         * AdminJourneyDwellRead
+         * @description Time spent on the stage's routes before leaving (from ``page.left``).
+         */
+        AdminJourneyDwellRead: {
+            /** Median Ms */
+            median_ms?: number | null;
+            /** P90 Ms */
+            p90_ms?: number | null;
+            /**
+             * Samples
+             * @default 0
+             */
+            samples: number;
+        };
+        /**
          * AdminJourneyFunnelRead
          * @description Companies created in the window and how far that cohort progressed.
          */
@@ -7486,6 +7578,91 @@ export interface components {
             partitions: number;
         };
         /**
+         * AdminJourneyNetworkFailureRead
+         * @description One failing endpoint behind a stage, with the status the browser saw.
+         */
+        AdminJourneyNetworkFailureRead: {
+            /** Route Key */
+            route_key?: string | null;
+            /** Endpoint Key */
+            endpoint_key?: string | null;
+            /** Status */
+            status?: string | null;
+            /**
+             * Count
+             * @default 0
+             */
+            count: number;
+        };
+        /**
+         * AdminJourneySessionRead
+         * @description A session whose last known route is one of the stage's routes.
+         *
+         *     Deliberately omits ``anonymous_id``, ``ip_hash`` and ``user_agent``: the
+         *     drawer needs a person to follow, not a fingerprint.
+         */
+        AdminJourneySessionRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** User Id */
+            user_id?: string | null;
+            /** Company Id */
+            company_id?: string | null;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /**
+             * Last Seen At
+             * Format: date-time
+             */
+            last_seen_at: string;
+            /** Exit Route */
+            exit_route?: string | null;
+            /** Device Type */
+            device_type?: string | null;
+            /** Browser */
+            browser?: string | null;
+            /** Locale */
+            locale?: string | null;
+            /**
+             * Source
+             * @default web
+             */
+            source: string;
+            /**
+             * Events
+             * @default 0
+             */
+            events: number;
+        };
+        /**
+         * AdminJourneySessionsRead
+         * @description Sessions that stopped at a stage, most recent first.
+         */
+        AdminJourneySessionsRead: {
+            /** Stage */
+            stage: string;
+            /**
+             * Window Days
+             * @default 30
+             */
+            window_days: number;
+            /** Route Keys */
+            route_keys?: string[];
+            /**
+             * Limit
+             * @default 50
+             */
+            limit: number;
+            /** Sessions */
+            sessions?: components["schemas"]["AdminJourneySessionRead"][];
+        };
+        /**
          * AdminJourneyStageRead
          * @description One stage of the cohort activation funnel.
          *
@@ -7521,6 +7698,125 @@ export interface components {
              * @default 0
              */
             stalled: number;
+        };
+        /**
+         * AdminJourneyTimelineEventRead
+         * @description One ordered event in a session. Properties are stored already sanitised.
+         */
+        AdminJourneyTimelineEventRead: {
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /** Name */
+            name: string;
+            /** Route Key */
+            route_key?: string | null;
+            /** Element Key */
+            element_key?: string | null;
+            /** Duration Ms */
+            duration_ms?: number | null;
+            /** Properties */
+            properties?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * AdminJourneyTimelineRead
+         * @description The read-only "replay lite": one session's events in time order.
+         */
+        AdminJourneyTimelineRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** User Id */
+            user_id?: string | null;
+            /** Company Id */
+            company_id?: string | null;
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /**
+             * Last Seen At
+             * Format: date-time
+             */
+            last_seen_at: string;
+            /** Exit Route */
+            exit_route?: string | null;
+            /** Device Type */
+            device_type?: string | null;
+            /** Browser */
+            browser?: string | null;
+            /** Locale */
+            locale?: string | null;
+            /**
+             * Source
+             * @default web
+             */
+            source: string;
+            /**
+             * Truncated
+             * @default false
+             */
+            truncated: boolean;
+            /** Events */
+            events?: components["schemas"]["AdminJourneyTimelineEventRead"][];
+        };
+        /**
+         * AdminJourneyValidationFailureRead
+         * @description One form/field/rule combination that blocked a stage.
+         */
+        AdminJourneyValidationFailureRead: {
+            /** Form */
+            form?: string | null;
+            /** Field */
+            field?: string | null;
+            /** Rule */
+            rule?: string | null;
+            /**
+             * Count
+             * @default 0
+             */
+            count: number;
+        };
+        /**
+         * AdminJourneyWhyRead
+         * @description Friction on one stage's routes: the "why" panel of the funnel drawer.
+         */
+        AdminJourneyWhyRead: {
+            /** Stage */
+            stage: string;
+            /**
+             * Window Days
+             * @default 30
+             */
+            window_days: number;
+            /** Route Keys */
+            route_keys?: string[];
+            /** Validation Failures */
+            validation_failures?: components["schemas"]["AdminJourneyValidationFailureRead"][];
+            /** Network Failures */
+            network_failures?: components["schemas"]["AdminJourneyNetworkFailureRead"][];
+            /** Dead Clicks */
+            dead_clicks?: components["schemas"]["AdminJourneyClickRead"][];
+            /** Rage Clicks */
+            rage_clicks?: components["schemas"]["AdminJourneyClickRead"][];
+            dwell?: components["schemas"]["AdminJourneyDwellRead"];
+            /**
+             * Sample Events
+             * @default 0
+             */
+            sample_events: number;
+            /**
+             * Sample Sessions
+             * @default 0
+             */
+            sample_sessions: number;
         };
         /** AdminMembershipRead */
         AdminMembershipRead: {
@@ -26414,6 +26710,102 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminJourneyHealthRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    journey_stage_why_api_v1_admin_journeys_why_get: {
+        parameters: {
+            query: {
+                stage: string;
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminJourneyWhyRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    journey_stage_sessions_api_v1_admin_journeys_sessions_get: {
+        parameters: {
+            query: {
+                stage: string;
+                days?: number;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminJourneySessionsRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    journey_session_timeline_api_v1_admin_journeys_sessions__session_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminJourneyTimelineRead"];
                 };
             };
             /** @description Validation Error */

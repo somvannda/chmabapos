@@ -30,6 +30,10 @@ from app.services.orders import transaction_usage
 from app.services import health as health_service
 from app.services.activation import build_funnel as build_activation_funnel
 from app.services.activation import build_health as build_activation_health
+from app.services.journey_diagnostics import UnknownJourneyStage
+from app.services.journey_diagnostics import build_session_timeline as build_journey_timeline
+from app.services.journey_diagnostics import build_stage_sessions as build_journey_sessions
+from app.services.journey_diagnostics import build_stage_why as build_journey_why
 from app.schemas import (
     AdminActivityRead,
     AdminAttentionItemRead,
@@ -49,6 +53,9 @@ from app.schemas import (
     AdminFunnelStageRead,
     AdminJourneyFunnelRead,
     AdminJourneyHealthRead,
+    AdminJourneySessionsRead,
+    AdminJourneyTimelineRead,
+    AdminJourneyWhyRead,
     AdminTimeToFirstSaleRead,
     AdminInventorySummaryRead,
     AdminMembershipRead,
@@ -474,6 +481,55 @@ async def journey_health(
 ) -> AdminJourneyHealthRead:
     """Volume, freshness and partition count for the telemetry pipeline."""
     return AdminJourneyHealthRead(**await build_activation_health(db, hours=hours))
+
+
+@router.get("/journeys/why", response_model=AdminJourneyWhyRead)
+async def journey_stage_why(
+    _: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+    stage: str = Query(min_length=1, max_length=80),
+    days: int = Query(default=30, ge=1, le=3650),
+) -> AdminJourneyWhyRead:
+    """Why merchants leak at one stage: form errors, API failures, clicks, dwell.
+
+    Every number is scoped to the routes the stage owns, and internal/staff
+    traffic is excluded inside the query. An unknown stage is a 400 listing the
+    stages this report understands, never an empty panel.
+    """
+    try:
+        payload = await build_journey_why(db, stage=stage, days=days)
+    except UnknownJourneyStage as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
+    return AdminJourneyWhyRead(**payload)
+
+
+@router.get("/journeys/sessions", response_model=AdminJourneySessionsRead)
+async def journey_stage_sessions(
+    _: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+    stage: str = Query(min_length=1, max_length=80),
+    days: int = Query(default=30, ge=1, le=3650),
+    limit: int = Query(default=50, ge=1, le=200),
+) -> AdminJourneySessionsRead:
+    """Sessions whose last known route is the stage's and that never moved on."""
+    try:
+        payload = await build_journey_sessions(db, stage=stage, days=days, limit=limit)
+    except UnknownJourneyStage as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
+    return AdminJourneySessionsRead(**payload)
+
+
+@router.get("/journeys/sessions/{session_id}", response_model=AdminJourneyTimelineRead)
+async def journey_session_timeline(
+    session_id: UUID,
+    _: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+) -> AdminJourneyTimelineRead:
+    """One session's ordered timeline. Read-only; internal sessions are hidden."""
+    payload = await build_journey_timeline(db, session_id=session_id)
+    if payload is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    return AdminJourneyTimelineRead(**payload)
 
 
 @router.get("/sales-analytics", response_model=AdminSalesAnalyticsRead)
