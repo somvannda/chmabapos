@@ -16822,6 +16822,191 @@
         }
       }
     },
+    "/api/v1/admin/journeys/why": {
+      "get": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Journey Stage Why",
+        "description": "Why merchants leak at one stage: form errors, API failures, clicks, dwell.\n\nEvery number is scoped to the routes the stage owns, and internal/staff\ntraffic is excluded inside the query. An unknown stage is a 400 listing the\nstages this report understands, never an empty panel.",
+        "operationId": "journey_stage_why_api_v1_admin_journeys_why_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "stage",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80,
+              "title": "Stage"
+            }
+          },
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 3650,
+              "minimum": 1,
+              "default": 30,
+              "title": "Days"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminJourneyWhyRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/journeys/sessions": {
+      "get": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Journey Stage Sessions",
+        "description": "Sessions whose last known route is the stage's and that never moved on.",
+        "operationId": "journey_stage_sessions_api_v1_admin_journeys_sessions_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "stage",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80,
+              "title": "Stage"
+            }
+          },
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 3650,
+              "minimum": 1,
+              "default": 30,
+              "title": "Days"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminJourneySessionsRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/journeys/sessions/{session_id}": {
+      "get": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Journey Session Timeline",
+        "description": "One session's ordered timeline. Read-only; internal sessions are hidden.",
+        "operationId": "journey_session_timeline_api_v1_admin_journeys_sessions__session_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Session Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminJourneyTimelineRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/sales-analytics": {
       "get": {
         "tags": [
@@ -24955,6 +25140,63 @@
         "type": "object",
         "title": "AdminInventorySummaryRead"
       },
+      "AdminJourneyClickRead": {
+        "properties": {
+          "element_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Element Key"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "AdminJourneyClickRead",
+        "description": "A dead or enraged click target. The key is stable, never a free-text label."
+      },
+      "AdminJourneyDwellRead": {
+        "properties": {
+          "median_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Median Ms"
+          },
+          "p90_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P90 Ms"
+          },
+          "samples": {
+            "type": "integer",
+            "title": "Samples",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "AdminJourneyDwellRead",
+        "description": "Time spent on the stage's routes before leaving (from ``page.left``)."
+      },
       "AdminJourneyFunnelRead": {
         "properties": {
           "window_days": {
@@ -25040,6 +25282,194 @@
         "title": "AdminJourneyHealthRead",
         "description": "Whether the telemetry pipeline is alive and current."
       },
+      "AdminJourneyNetworkFailureRead": {
+        "properties": {
+          "route_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route Key"
+          },
+          "endpoint_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Endpoint Key"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "AdminJourneyNetworkFailureRead",
+        "description": "One failing endpoint behind a stage, with the status the browser saw."
+      },
+      "AdminJourneySessionRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          },
+          "company_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company Id"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "last_seen_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Last Seen At"
+          },
+          "exit_route": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Route"
+          },
+          "device_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Type"
+          },
+          "browser": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Browser"
+          },
+          "locale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locale"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "default": "web"
+          },
+          "events": {
+            "type": "integer",
+            "title": "Events",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "started_at",
+          "last_seen_at"
+        ],
+        "title": "AdminJourneySessionRead",
+        "description": "A session whose last known route is one of the stage's routes.\n\nDeliberately omits ``anonymous_id``, ``ip_hash`` and ``user_agent``: the\ndrawer needs a person to follow, not a fingerprint."
+      },
+      "AdminJourneySessionsRead": {
+        "properties": {
+          "stage": {
+            "type": "string",
+            "title": "Stage"
+          },
+          "window_days": {
+            "type": "integer",
+            "title": "Window Days",
+            "default": 30
+          },
+          "route_keys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Route Keys"
+          },
+          "limit": {
+            "type": "integer",
+            "title": "Limit",
+            "default": 50
+          },
+          "sessions": {
+            "items": {
+              "$ref": "#/components/schemas/AdminJourneySessionRead"
+            },
+            "type": "array",
+            "title": "Sessions"
+          }
+        },
+        "type": "object",
+        "required": [
+          "stage"
+        ],
+        "title": "AdminJourneySessionsRead",
+        "description": "Sessions that stopped at a stage, most recent first."
+      },
       "AdminJourneyStageRead": {
         "properties": {
           "key": {
@@ -25117,6 +25547,288 @@
         ],
         "title": "AdminJourneyStageRead",
         "description": "One stage of the cohort activation funnel.\n\n``authoritative`` is False for stages only the browser can observe (opening\nthe setup wizard). Those explain the journey; they are never the number a\nconversion rate is based on."
+      },
+      "AdminJourneyTimelineEventRead": {
+        "properties": {
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Occurred At"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "route_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Route Key"
+          },
+          "element_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Element Key"
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms"
+          },
+          "properties": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Properties"
+          }
+        },
+        "type": "object",
+        "required": [
+          "occurred_at",
+          "name"
+        ],
+        "title": "AdminJourneyTimelineEventRead",
+        "description": "One ordered event in a session. Properties are stored already sanitised."
+      },
+      "AdminJourneyTimelineRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          },
+          "company_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company Id"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "last_seen_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Last Seen At"
+          },
+          "exit_route": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Route"
+          },
+          "device_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Type"
+          },
+          "browser": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Browser"
+          },
+          "locale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locale"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "default": "web"
+          },
+          "truncated": {
+            "type": "boolean",
+            "title": "Truncated",
+            "default": false
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/AdminJourneyTimelineEventRead"
+            },
+            "type": "array",
+            "title": "Events"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "started_at",
+          "last_seen_at"
+        ],
+        "title": "AdminJourneyTimelineRead",
+        "description": "The read-only \"replay lite\": one session's events in time order."
+      },
+      "AdminJourneyValidationFailureRead": {
+        "properties": {
+          "form": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Form"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field"
+          },
+          "rule": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rule"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "AdminJourneyValidationFailureRead",
+        "description": "One form/field/rule combination that blocked a stage."
+      },
+      "AdminJourneyWhyRead": {
+        "properties": {
+          "stage": {
+            "type": "string",
+            "title": "Stage"
+          },
+          "window_days": {
+            "type": "integer",
+            "title": "Window Days",
+            "default": 30
+          },
+          "route_keys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Route Keys"
+          },
+          "validation_failures": {
+            "items": {
+              "$ref": "#/components/schemas/AdminJourneyValidationFailureRead"
+            },
+            "type": "array",
+            "title": "Validation Failures"
+          },
+          "network_failures": {
+            "items": {
+              "$ref": "#/components/schemas/AdminJourneyNetworkFailureRead"
+            },
+            "type": "array",
+            "title": "Network Failures"
+          },
+          "dead_clicks": {
+            "items": {
+              "$ref": "#/components/schemas/AdminJourneyClickRead"
+            },
+            "type": "array",
+            "title": "Dead Clicks"
+          },
+          "rage_clicks": {
+            "items": {
+              "$ref": "#/components/schemas/AdminJourneyClickRead"
+            },
+            "type": "array",
+            "title": "Rage Clicks"
+          },
+          "dwell": {
+            "$ref": "#/components/schemas/AdminJourneyDwellRead"
+          },
+          "sample_events": {
+            "type": "integer",
+            "title": "Sample Events",
+            "default": 0
+          },
+          "sample_sessions": {
+            "type": "integer",
+            "title": "Sample Sessions",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "stage"
+        ],
+        "title": "AdminJourneyWhyRead",
+        "description": "Friction on one stage's routes: the \"why\" panel of the funnel drawer."
       },
       "AdminMembershipRead": {
         "properties": {
