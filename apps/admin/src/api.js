@@ -133,6 +133,7 @@ export const api = {
   billingCheckout: (token, body) => request("/billing/checkout", { ...json("POST", body), token }),
   adminOverview: (token) => request("/admin/overview", { token }),
   adminFunnel: (token, days) => request(`/admin/funnel${days ? `?days=${days}` : ""}`, { token }),
+  adminJourneyFunnel: (token, days) => request(`/admin/journeys/funnel${days ? `?days=${days}` : ""}`, { token }),
   adminSalesAnalytics: (token, days) => request(`/admin/sales-analytics${days ? `?days=${days}` : ""}`, { token }),
   adminRetention: (token, weeks) => request(`/admin/retention${weeks ? `?weeks=${weeks}` : ""}`, { token }),
   adminAttention: (token) => request("/admin/attention", { token }),

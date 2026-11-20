@@ -62,6 +62,7 @@ const ADMIN_NAV_GROUPS = [
     title: "Growth",
     items: [
       { id: "funnel", label: "Funnel", icon: TrendingUp },
+      { id: "journeys", label: "Journeys", icon: Activity },
       { id: "analytics", label: "Sales analytics", icon: BarChart3 },
       { id: "retention", label: "Retention", icon: Clock3 },
     ],
@@ -5693,6 +5694,62 @@ function healthFix(check) {
   return visible ? link : null;
 }
 
+function AdminJourneys({ token }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [days, setDays] = useState("30");
+  const load = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      setData(await api.adminJourneyFunnel(token, days || undefined));
+    } catch (requestError) {
+      setError(requestError.message || "Could not load the activation journey");
+    } finally {
+      setLoading(false);
+    }
+  };
+  useEffect(() => { load(); }, [token, days]);
+  const pct = (value) => (value == null ? "-" : `${Math.round(value * 100)}%`);
+  const asDuration = (seconds) => {
+    if (seconds == null) return "-";
+    if (seconds < 3600) return `${Math.max(1, Math.round(seconds / 60))}m`;
+    if (seconds < 86400) return `${(seconds / 3600).toFixed(1)}h`;
+    return `${(seconds / 86400).toFixed(1)}d`;
+  };
+  const max = data?.stages?.length ? Math.max(...data.stages.map((stage) => stage.count), 1) : 1;
+  return <div className="mx-auto max-w-[1100px] p-5 lg:p-8">
+    <AdminPageHeader
+      title="Activation journeys"
+      description="One signup cohort, read forward from account creation to a repeat sale. Every stage counts the same workspaces."
+      actions={<select value={days} onChange={(event) => setDays(event.target.value)} className="h-10 rounded-xl border border-[#e4e4eb] bg-white px-3 text-xs font-semibold text-[#4f5059]">{[7, 30, 90, 365].map((value) => <option key={value} value={value}>Last {value} days</option>)}</select>}
+    />
+    {error && <p className="mt-5 rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b]">{error}</p>}
+    {loading ? <p className="mt-6 text-sm text-[#92939d]">Loading the cohort...</p> : data && <>
+      <div className="mt-6 rounded-2xl border border-[#e9e9ef] bg-white p-5">
+        <p className="text-[10px] font-bold uppercase tracking-[.12em] text-[#92939d]">Cohort</p>
+        <p className="mt-2 text-2xl font-extrabold tracking-[-.04em]">{data.total} workspace{data.total === 1 ? "" : "s"}</p>
+        <p className="mt-1 text-[11px] text-[#92939d]">Created in the last {data.window_days} days. Platform staff and internal addresses are excluded.</p>
+      </div>
+      <div className="mt-5 overflow-hidden rounded-2xl border border-[#e9e9ef] bg-white">
+        {data.stages.map((stage) => <div key={stage.key} className="border-b border-[#f0f0f3] px-4 py-4 last:border-0">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+            <span className="flex items-center gap-2 font-bold text-[#3d3e47]">
+              {stage.label}
+              {!stage.authoritative && <Badge tone="neutral">explains, not counted</Badge>}
+            </span>
+            <span className="text-[#777883]"><strong className="text-[#202128]">{stage.count}</strong> · {pct(stage.from_previous)} from previous · {pct(stage.from_start)} of cohort</span>
+          </div>
+          <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-[#f1f1f5]"><div className="h-full rounded-full bg-[#6957f5]" style={{ width: `${Math.max(2, Math.round((stage.count / max) * 100))}%` }} /></div>
+          <p className="mt-1.5 text-[10px] text-[#a0a1aa]">{stage.stalled} not yet reached · median {asDuration(stage.median_seconds)} · p90 {asDuration(stage.p90_seconds)} after signup</p>
+        </div>)}
+      </div>
+      <p className="mt-4 text-[10px] leading-4 text-[#a0a1aa]">A missing client event never removes a merchant from a later stage: creating a workspace implies verification and sign-in. That is why the stages only ever shrink.</p>
+    </>}
+  </div>;
+}
+
 function AdminSystemHealth({ token, notify, onNavigate }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -5902,7 +5959,7 @@ function AdminSystemHealth({ token, notify, onNavigate }) {
 
 function PlatformAdmin({ token, user, onSignOut, notify, initialPage = "overview", onNavigate }) {  const [active, setActive] = useState(initialPage);  const [mobileOpen, setMobileOpen] = useState(false);  const [overview, setOverview] = useState(null);  const [users, setUsers] = useState([]);  const [companies, setCompanies] = useState([]);  const [stores, setStores] = useState([]);  const [subscriptions, setSubscriptions] = useState([]);  const [plans, setPlans] = useState([]);
   const [planFeatureCatalog, setPlanFeatureCatalog] = useState([]);  const [activities, setActivities] = useState([]);  const [attention, setAttention] = useState(null);  const [health, setHealth] = useState(null);  const [loading, setLoading] = useState(true);  const [error, setError] = useState("");  const load = async () => {    setLoading(true);    setError("");    try {      const [overviewRow, usersRows, companyRows, storeRows, subscriptionRows, planRows, activityRows, attentionRow, healthRow, featureRows] = await Promise.all([        api.adminOverview(token),        api.adminUsers(token),        api.adminCompanies(token),        api.adminStores(token),        api.adminSubscriptions(token),        api.adminPlans(token),        api.adminActivity(token, { limit: 100 }),
-        api.adminAttention(token),        api.adminSystemHealth(token).catch(() => null),        api.planFeatures().catch(() => []),      ]);      setOverview(overviewRow);      setUsers(usersRows);      setCompanies(companyRows);      setStores(storeRows);      setSubscriptions(subscriptionRows);      setPlans(planRows);      setPlanFeatureCatalog(featureRows || []);      setActivities(activityRows);      setAttention(attentionRow);      setHealth(healthRow);    } catch (requestError) {      setError(requestError.message || "Could not load admin data");    } finally {      setLoading(false);    }  };  useEffect(() => { load(); }, [token]);  const navigate = (page) => { setActive(page); onNavigate?.(page); };const updateUser = async (id, body) => { try { await api.adminUpdateUser(token, id, body); notify("User updated"); await load(); } catch (requestError) { setError(requestError.message); } };const updateCompany = async (id, body) => { try { await api.adminUpdateCompany(token, id, body); notify("Company status updated"); await load(); } catch (requestError) { setError(requestError.message); } };const updateStore = async (id, body) => { try { await api.adminUpdateStore(token, id, body); notify("Store status updated"); await load(); } catch (requestError) { setError(requestError.message); } };const savePlan = async (request) => { try { if (request.create) { await api.adminCreatePlan(token, request); notify("Plan created"); } else { await api.adminUpdatePlan(token, request.code, request); notify("Plan updated"); } await load(); } catch (requestError) { setError(requestError.message || "Could not save plan"); throw requestError; } };const content = { overview: <AdminOverview overview={overview} companies={companies} activities={activities} attention={attention} health={health} onNavigate={navigate} loading={loading} />, funnel: <AdminFunnel token={token} />, analytics: <AdminSalesAnalytics token={token} />, retention: <AdminRetention token={token} />, attention: <AdminAttention token={token} onNavigate={navigate} />, health: <AdminSystemHealth token={token} notify={notify} onNavigate={navigate} />, search: <AdminSearch token={token} onNavigate={navigate} />, users: <AdminUsers users={users} onUpdate={updateUser} loading={loading} token={token} canManage={user?.platform_role === "super_admin"} />, contacts: <AdminContacts token={token} notify={notify} onNavigate={navigate} />, companies: <AdminCompanies companies={companies} onUpdate={updateCompany} loading={loading} token={token} />, stores: <AdminStores stores={stores} onUpdate={updateStore} loading={loading} />, subscriptions: <AdminSubscriptions subscriptions={subscriptions} plans={plans} token={token} notify={notify} loading={loading} onRefresh={load} canManage={user?.platform_role === "super_admin"} />, "billing-payments": <AdminBillingPayments token={token} />, plans: <AdminPlans plans={plans} featureCatalog={planFeatureCatalog} onSave={savePlan} loading={loading} canManage={user?.platform_role === "super_admin"} />, payments: <AdminPayments token={token} notify={notify} user={user} />, mailing: <AdminMailing token={token} user={user} notify={notify} onNavigate={navigate} />, settings: <AdminSettings token={token} user={user} notify={notify} />, audit: <AdminAudit token={token} />, support: <AdminSupportInsights token={token} notify={notify} />, help: <AdminHelpContent token={token} notify={notify} />, guides: <AdminGuides token={token} notify={notify} /> }[active] || <AdminOverview overview={overview} companies={companies} activities={activities} attention={attention} health={health} onNavigate={navigate} loading={loading} />;  return <div className="min-h-screen bg-[#fafafd] text-[#202128]"><AdminSidebar active={active} onNavigate={navigate} onSignOut={onSignOut} user={user} /><AdminMobileMenu active={active} open={mobileOpen} onClose={() => setMobileOpen(false)} onNavigate={navigate} /><div className="lg:pl-[252px]"><AdminHeader active={active} onMenu={() => setMobileOpen(true)} onSignOut={onSignOut} user={user} /><main>{error && <div className="mx-auto max-w-[1460px] px-5 pt-5 lg:px-8"><p className="rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b]">{error}</p></div>}{content}</main></div></div>;}
+        api.adminAttention(token),        api.adminSystemHealth(token).catch(() => null),        api.planFeatures().catch(() => []),      ]);      setOverview(overviewRow);      setUsers(usersRows);      setCompanies(companyRows);      setStores(storeRows);      setSubscriptions(subscriptionRows);      setPlans(planRows);      setPlanFeatureCatalog(featureRows || []);      setActivities(activityRows);      setAttention(attentionRow);      setHealth(healthRow);    } catch (requestError) {      setError(requestError.message || "Could not load admin data");    } finally {      setLoading(false);    }  };  useEffect(() => { load(); }, [token]);  const navigate = (page) => { setActive(page); onNavigate?.(page); };const updateUser = async (id, body) => { try { await api.adminUpdateUser(token, id, body); notify("User updated"); await load(); } catch (requestError) { setError(requestError.message); } };const updateCompany = async (id, body) => { try { await api.adminUpdateCompany(token, id, body); notify("Company status updated"); await load(); } catch (requestError) { setError(requestError.message); } };const updateStore = async (id, body) => { try { await api.adminUpdateStore(token, id, body); notify("Store status updated"); await load(); } catch (requestError) { setError(requestError.message); } };const savePlan = async (request) => { try { if (request.create) { await api.adminCreatePlan(token, request); notify("Plan created"); } else { await api.adminUpdatePlan(token, request.code, request); notify("Plan updated"); } await load(); } catch (requestError) { setError(requestError.message || "Could not save plan"); throw requestError; } };const content = { overview: <AdminOverview overview={overview} companies={companies} activities={activities} attention={attention} health={health} onNavigate={navigate} loading={loading} />, funnel: <AdminFunnel token={token} />, journeys: <AdminJourneys token={token} />, analytics: <AdminSalesAnalytics token={token} />, retention: <AdminRetention token={token} />, attention: <AdminAttention token={token} onNavigate={navigate} />, health: <AdminSystemHealth token={token} notify={notify} onNavigate={navigate} />, search: <AdminSearch token={token} onNavigate={navigate} />, users: <AdminUsers users={users} onUpdate={updateUser} loading={loading} token={token} canManage={user?.platform_role === "super_admin"} />, contacts: <AdminContacts token={token} notify={notify} onNavigate={navigate} />, companies: <AdminCompanies companies={companies} onUpdate={updateCompany} loading={loading} token={token} />, stores: <AdminStores stores={stores} onUpdate={updateStore} loading={loading} />, subscriptions: <AdminSubscriptions subscriptions={subscriptions} plans={plans} token={token} notify={notify} loading={loading} onRefresh={load} canManage={user?.platform_role === "super_admin"} />, "billing-payments": <AdminBillingPayments token={token} />, plans: <AdminPlans plans={plans} featureCatalog={planFeatureCatalog} onSave={savePlan} loading={loading} canManage={user?.platform_role === "super_admin"} />, payments: <AdminPayments token={token} notify={notify} user={user} />, mailing: <AdminMailing token={token} user={user} notify={notify} onNavigate={navigate} />, settings: <AdminSettings token={token} user={user} notify={notify} />, audit: <AdminAudit token={token} />, support: <AdminSupportInsights token={token} notify={notify} />, help: <AdminHelpContent token={token} notify={notify} />, guides: <AdminGuides token={token} notify={notify} /> }[active] || <AdminOverview overview={overview} companies={companies} activities={activities} attention={attention} health={health} onNavigate={navigate} loading={loading} />;  return <div className="min-h-screen bg-[#fafafd] text-[#202128]"><AdminSidebar active={active} onNavigate={navigate} onSignOut={onSignOut} user={user} /><AdminMobileMenu active={active} open={mobileOpen} onClose={() => setMobileOpen(false)} onNavigate={navigate} /><div className="lg:pl-[252px]"><AdminHeader active={active} onMenu={() => setMobileOpen(true)} onSignOut={onSignOut} user={user} /><main>{error && <div className="mx-auto max-w-[1460px] px-5 pt-5 lg:px-8"><p className="rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b]">{error}</p></div>}{content}</main></div></div>;}
 
 export { ThemeProvider, ThemeToggle };
 export default PlatformAdmin;
