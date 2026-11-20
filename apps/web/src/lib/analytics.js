@@ -163,6 +163,15 @@ export function authFailureReason(message) {
   return text.trim() ? "rejected" : "unknown";
 }
 
+// A click that changed nothing: same path, no new network request, no dialog.
+// It is the cheapest signal we have that a control looked interactive but was
+// not, which is exactly the "I clicked it three times and nothing happened"
+// experience that never shows up as an error.
+export function isDeadClick(before, after) {
+  if (!before || !after) return false;
+  return before.path === after.path && before.resources === after.resources && !after.dialog;
+}
+
 function uuid() {
   try {
     if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
@@ -381,6 +390,12 @@ export function createAnalytics(options = {}) {
     const label = (target.getAttribute("data-track") || target.getAttribute("aria-label") || target.getAttribute("name") || "").trim().slice(0, 60);
     const elementKey = target.getAttribute("data-track") || `${target.tagName.toLowerCase()}:${label}`;
     const now = clock();
+    const snapshot = () => ({
+      path: documentRef?.location?.pathname || "",
+      resources: globalThis.performance?.getEntriesByType?.("resource")?.length ?? 0,
+      dialog: Boolean(documentRef?.querySelector?.('[role="dialog"]')),
+    });
+    const before = snapshot();
     if (rage.key === elementKey && now - rage.at < 1000) {
       rage.count += 1;
       if (rage.count === 3) enqueue("ui.rage_click", { element_key: elementKey, clicks: rage.count });
@@ -388,6 +403,9 @@ export function createAnalytics(options = {}) {
       rage = { key: elementKey, count: 1, at: now };
     }
     enqueue("ui.click", { element_key: elementKey, role: target.tagName.toLowerCase() });
+    setTimeout(() => {
+      if (isDeadClick(before, snapshot())) enqueue("ui.dead_click", { element_key: elementKey });
+    }, 700);
   }
 
   function onError(event) {

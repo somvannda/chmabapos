@@ -6,6 +6,7 @@ import {
   createAnalytics,
   filledFieldCount,
   hashKey,
+  isDeadClick,
   lengthBucket,
   networkEndpointKey,
   networkErrorCode,
@@ -130,6 +131,15 @@ test("step timing is attached to the completion event", () => {
 
   assert.equal(sent[0].events[0].name, "onboarding.step_completed");
   assert.equal(sent[0].events[0].duration_ms, 4200);
+});
+
+test("a click that changed nothing is a dead click", () => {
+  const before = { path: "/pos", resources: 4, dialog: false };
+  assert.equal(isDeadClick(before, { ...before }), true);
+  assert.equal(isDeadClick(before, { ...before, path: "/orders" }), false);
+  assert.equal(isDeadClick(before, { ...before, resources: 5 }), false);
+  assert.equal(isDeadClick(before, { ...before, dialog: true }), false);
+  assert.equal(isDeadClick(null, before), false);
 });
 
 test("a disabled SDK sends nothing", () => {
