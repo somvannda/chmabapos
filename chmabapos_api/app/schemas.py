@@ -3337,6 +3337,112 @@ class AdminJourneyHealthRead(APIModel):
     partitions: int = 0
 
 
+class AdminJourneyValidationFailureRead(APIModel):
+    """One form/field/rule combination that blocked a stage."""
+
+    form: str | None = None
+    field: str | None = None
+    rule: str | None = None
+    count: int = 0
+
+
+class AdminJourneyNetworkFailureRead(APIModel):
+    """One failing endpoint behind a stage, with the status the browser saw."""
+
+    route_key: str | None = None
+    endpoint_key: str | None = None
+    status: str | None = None
+    count: int = 0
+
+
+class AdminJourneyClickRead(APIModel):
+    """A dead or enraged click target. The key is stable, never a free-text label."""
+
+    element_key: str | None = None
+    count: int = 0
+
+
+class AdminJourneyDwellRead(APIModel):
+    """Time spent on the stage's routes before leaving (from ``page.left``)."""
+
+    median_ms: float | None = None
+    p90_ms: float | None = None
+    samples: int = 0
+
+
+class AdminJourneyWhyRead(APIModel):
+    """Friction on one stage's routes: the "why" panel of the funnel drawer."""
+
+    stage: str
+    window_days: int = 30
+    route_keys: list[str] = Field(default_factory=list)
+    validation_failures: list[AdminJourneyValidationFailureRead] = Field(default_factory=list)
+    network_failures: list[AdminJourneyNetworkFailureRead] = Field(default_factory=list)
+    dead_clicks: list[AdminJourneyClickRead] = Field(default_factory=list)
+    rage_clicks: list[AdminJourneyClickRead] = Field(default_factory=list)
+    dwell: AdminJourneyDwellRead = Field(default_factory=AdminJourneyDwellRead)
+    sample_events: int = 0
+    sample_sessions: int = 0
+
+
+class AdminJourneySessionRead(APIModel):
+    """A session whose last known route is one of the stage's routes.
+
+    Deliberately omits ``anonymous_id``, ``ip_hash`` and ``user_agent``: the
+    drawer needs a person to follow, not a fingerprint.
+    """
+
+    id: UUID
+    user_id: UUID | None = None
+    company_id: UUID | None = None
+    started_at: datetime
+    last_seen_at: datetime
+    exit_route: str | None = None
+    device_type: str | None = None
+    browser: str | None = None
+    locale: str | None = None
+    source: str = "web"
+    events: int = 0
+
+
+class AdminJourneySessionsRead(APIModel):
+    """Sessions that stopped at a stage, most recent first."""
+
+    stage: str
+    window_days: int = 30
+    route_keys: list[str] = Field(default_factory=list)
+    limit: int = 50
+    sessions: list[AdminJourneySessionRead] = Field(default_factory=list)
+
+
+class AdminJourneyTimelineEventRead(APIModel):
+    """One ordered event in a session. Properties are stored already sanitised."""
+
+    occurred_at: datetime
+    name: str
+    route_key: str | None = None
+    element_key: str | None = None
+    duration_ms: int | None = None
+    properties: dict[str, Any] = Field(default_factory=dict)
+
+
+class AdminJourneyTimelineRead(APIModel):
+    """The read-only "replay lite": one session's events in time order."""
+
+    id: UUID
+    user_id: UUID | None = None
+    company_id: UUID | None = None
+    started_at: datetime
+    last_seen_at: datetime
+    exit_route: str | None = None
+    device_type: str | None = None
+    browser: str | None = None
+    locale: str | None = None
+    source: str = "web"
+    truncated: bool = False
+    events: list[AdminJourneyTimelineEventRead] = Field(default_factory=list)
+
+
 class AdminSalesSummaryRead(APIModel):
     orders_total: int = 0
     orders_window: int = 0
