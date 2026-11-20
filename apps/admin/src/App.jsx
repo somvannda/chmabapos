@@ -5696,6 +5696,7 @@ function healthFix(check) {
 
 function AdminJourneys({ token }) {
   const [data, setData] = useState(null);
+  const [health, setHealth] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [days, setDays] = useState("30");
@@ -5703,7 +5704,12 @@ function AdminJourneys({ token }) {
     setLoading(true);
     setError("");
     try {
-      setData(await api.adminJourneyFunnel(token, days || undefined));
+      const [funnel, ingest] = await Promise.all([
+        api.adminJourneyFunnel(token, days || undefined),
+        api.adminJourneyHealth(token, 24).catch(() => null),
+      ]);
+      setData(funnel);
+      setHealth(ingest);
     } catch (requestError) {
       setError(requestError.message || "Could not load the activation journey");
     } finally {
@@ -5734,6 +5740,12 @@ function AdminJourneys({ token }) {
         <p className="mt-2 text-2xl font-extrabold tracking-[-.04em]">{data.total} workspace{data.total === 1 ? "" : "s"}</p>
         <p className="mt-1 text-[11px] text-[#92939d]">Created in the last {data.window_days} days. Platform staff and internal addresses are excluded.</p>
       </div>
+      {health && <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl border border-[#e9e9ef] bg-white px-4 py-3 text-[11px] text-[#777883]">
+        <Badge tone={health.lag_seconds != null && health.lag_seconds > 3600 ? "yellow" : "green"} dot>{health.lag_seconds != null && health.lag_seconds > 3600 ? "Ingest lagging" : "Ingest current"}</Badge>
+        <span><strong className="text-[#202128]">{health.events}</strong> events · {health.sessions} sessions · {health.users} users</span>
+        <span>{health.partitions} partition{health.partitions === 1 ? "" : "s"}</span>
+        <span>{health.lag_seconds == null ? "No events yet" : `newest event ${asDuration(health.lag_seconds)} ago`}</span>
+      </div>}
       <div className="mt-5 overflow-hidden rounded-2xl border border-[#e9e9ef] bg-white">
         {data.stages.map((stage) => <div key={stage.key} className="border-b border-[#f0f0f3] px-4 py-4 last:border-0">
           <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
