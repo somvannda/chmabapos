@@ -7700,6 +7700,23 @@ export interface components {
             stalled: number;
         };
         /**
+         * AdminJourneySurveyAnswerRead
+         * @description One answer bucket from the setup wizard's abandon survey.
+         *
+         *     ``answer`` is a fixed code ("unclear", "expensive", ...) or, for "Other",
+         *     the free text the merchant chose to send (already sanitised and capped by
+         *     the ingest pipeline).
+         */
+        AdminJourneySurveyAnswerRead: {
+            /** Answer */
+            answer?: string | null;
+            /**
+             * Count
+             * @default 0
+             */
+            count: number;
+        };
+        /**
          * AdminJourneyTimelineEventRead
          * @description One ordered event in a session. Properties are stored already sanitised.
          */
@@ -7806,6 +7823,13 @@ export interface components {
             dead_clicks?: components["schemas"]["AdminJourneyClickRead"][];
             /** Rage Clicks */
             rage_clicks?: components["schemas"]["AdminJourneyClickRead"][];
+            /** Survey */
+            survey?: components["schemas"]["AdminJourneySurveyAnswerRead"][];
+            /**
+             * Survey Total
+             * @default 0
+             */
+            survey_total: number;
             dwell?: components["schemas"]["AdminJourneyDwellRead"];
             /**
              * Sample Events

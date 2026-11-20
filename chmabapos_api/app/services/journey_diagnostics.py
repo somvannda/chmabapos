@@ -4,8 +4,9 @@ The cohort funnel in :mod:`app.services.activation` answers *where* merchants dr
 off, using authoritative server milestones. This module answers the next two
 questions for one stage:
 
-1. **Why** - the validation errors, API failures, dead/rage clicks and dwell the
-   merchant experienced on the routes that stage owns.
+1. **Why** - the validation errors, API failures, dead/rage clicks, dwell and
+   one-question abandon-survey answers the merchant experienced on the routes
+   that stage owns.
 2. **Who** - the sessions whose last known route is one of those routes and that
    never reached a later milestone, plus the ordered timeline of any one session.
 
@@ -112,7 +113,12 @@ async def _rows(db: AsyncSession, sql: str, parameters: dict[str, Any]) -> list[
 
 
 async def build_stage_why(db: AsyncSession, *, stage: str, days: int = 30) -> dict[str, Any]:
-    """Validation, network, click and dwell friction on a stage's routes."""
+    """Validation, network, click and dwell friction on a stage's routes.
+
+    ``survey`` holds the top answers of the one-question abandon survey, with
+    ``survey_total`` as their denominator. It is explanatory only: the funnel
+    counts in :mod:`app.services.activation` never read it.
+    """
     routes = stage_routes(stage)
     parameters = {"since": _window(days), "routes": list(routes), "limit": _TOP_GROUPS}
 
@@ -206,6 +212,38 @@ async def build_stage_why(db: AsyncSession, *, stage: str, days: int = 30) -> di
             parameters,
         )
     ).mappings().one()
+    # The one-question abandon survey is the only human-readable "why" in the
+    # panel. It is explanatory data: it never moves a funnel count, so it is
+    # read here rather than in app.services.activation.
+    survey = await _rows(
+        db,
+        f"""
+        SELECT btrim(e.properties->>'answer') AS answer,
+               count(*) AS count
+        FROM analytics_events e
+        WHERE {_SCOPE}
+          AND e.name = 'onboarding.abandon_survey'
+          AND nullif(btrim(e.properties->>'answer'), '') IS NOT NULL
+        GROUP BY 1
+        ORDER BY count DESC, answer NULLS LAST
+        LIMIT :limit
+        """,
+        parameters,
+    )
+    survey_total = (
+        await db.execute(
+            text(
+                f"""
+                SELECT count(*) AS answers
+                FROM analytics_events e
+                WHERE {_SCOPE}
+                  AND e.name = 'onboarding.abandon_survey'
+                  AND nullif(btrim(e.properties->>'answer'), '') IS NOT NULL
+                """
+            ),
+            parameters,
+        )
+    ).mappings().one()
 
     return {
         "stage": stage,
@@ -215,6 +253,8 @@ async def build_stage_why(db: AsyncSession, *, stage: str, days: int = 30) -> di
         "network_failures": [dict(row) for row in network],
         "dead_clicks": [dict(row) for row in dead_clicks],
         "rage_clicks": [dict(row) for row in rage_clicks],
+        "survey": [dict(row) for row in survey],
+        "survey_total": int(survey_total["answers"] or 0),
         "dwell": {
             "median_ms": float(dwell["median_ms"]) if dwell["median_ms"] is not None else None,
             "p90_ms": float(dwell["p90_ms"]) if dwell["p90_ms"] is not None else None,
