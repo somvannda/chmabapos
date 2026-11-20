@@ -25548,6 +25548,29 @@
         "title": "AdminJourneyStageRead",
         "description": "One stage of the cohort activation funnel.\n\n``authoritative`` is False for stages only the browser can observe (opening\nthe setup wizard). Those explain the journey; they are never the number a\nconversion rate is based on."
       },
+      "AdminJourneySurveyAnswerRead": {
+        "properties": {
+          "answer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answer"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "title": "AdminJourneySurveyAnswerRead",
+        "description": "One answer bucket from the setup wizard's abandon survey.\n\n``answer`` is a fixed code (\"unclear\", \"expensive\", ...) or, for \"Other\",\nthe free text the merchant chose to send (already sanitised and capped by\nthe ingest pipeline)."
+      },
       "AdminJourneyTimelineEventRead": {
         "properties": {
           "occurred_at": {
@@ -25808,6 +25831,18 @@
             },
             "type": "array",
             "title": "Rage Clicks"
+          },
+          "survey": {
+            "items": {
+              "$ref": "#/components/schemas/AdminJourneySurveyAnswerRead"
+            },
+            "type": "array",
+            "title": "Survey"
+          },
+          "survey_total": {
+            "type": "integer",
+            "title": "Survey Total",
+            "default": 0
           },
           "dwell": {
             "$ref": "#/components/schemas/AdminJourneyDwellRead"

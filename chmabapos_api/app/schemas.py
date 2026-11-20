@@ -3362,6 +3362,18 @@ class AdminJourneyClickRead(APIModel):
     count: int = 0
 
 
+class AdminJourneySurveyAnswerRead(APIModel):
+    """One answer bucket from the setup wizard's abandon survey.
+
+    ``answer`` is a fixed code ("unclear", "expensive", ...) or, for "Other",
+    the free text the merchant chose to send (already sanitised and capped by
+    the ingest pipeline).
+    """
+
+    answer: str | None = None
+    count: int = 0
+
+
 class AdminJourneyDwellRead(APIModel):
     """Time spent on the stage's routes before leaving (from ``page.left``)."""
 
@@ -3380,6 +3392,8 @@ class AdminJourneyWhyRead(APIModel):
     network_failures: list[AdminJourneyNetworkFailureRead] = Field(default_factory=list)
     dead_clicks: list[AdminJourneyClickRead] = Field(default_factory=list)
     rage_clicks: list[AdminJourneyClickRead] = Field(default_factory=list)
+    survey: list[AdminJourneySurveyAnswerRead] = Field(default_factory=list)
+    survey_total: int = 0
     dwell: AdminJourneyDwellRead = Field(default_factory=AdminJourneyDwellRead)
     sample_events: int = 0
     sample_sessions: int = 0

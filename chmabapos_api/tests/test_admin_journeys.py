@@ -1,7 +1,8 @@
 """Cohort activation funnel: one denominator, monotonic stages.
 
-Also covers the stage drilldown: why a stage leaks (validation/network/click/dwell
-friction) and which sessions stopped there, including the ordered timeline.
+Also covers the stage drilldown: why a stage leaks (validation/network/click/
+dwell friction and abandon-survey answers) and which sessions stopped there,
+including the ordered timeline.
 """
 from __future__ import annotations
 
@@ -329,6 +330,105 @@ async def test_journey_why_explains_stage_friction() -> None:
         if operator_email:
             await _purge_analytics(operator_email, operator_company_id)
             await cleanup(operator_email, operator_company_id)
+
+
+async def test_journey_why_groups_abandon_survey_answers() -> None:
+    merchant_email = ""
+    merchant_company_id = None
+    operator_email = ""
+    operator_company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            merchant_email, merchant_workspace, merchant_headers = await _new_workspace(
+                client, "journey-survey"
+            )
+            merchant_company_id = merchant_workspace["company"]["id"]
+            await _seed_session(
+                client,
+                merchant_headers,
+                [
+                    # The setup plan step is where "too expensive" is expected.
+                    _event(
+                        "onboarding.abandon_survey",
+                        {"step_key": "Choose your plan", "answer": "expensive"},
+                        route_key="setup.plan",
+                    ),
+                    _event(
+                        "onboarding.abandon_survey",
+                        {"step_key": "Choose your plan", "answer": "expensive"},
+                        route_key="setup.plan",
+                    ),
+                    _event(
+                        "onboarding.abandon_survey",
+                        {"step_key": "A few quick questions", "answer": "unclear"},
+                        route_key="setup.questions",
+                    ),
+                    # "Other" arrives as the text the merchant chose to send.
+                    _event(
+                        "onboarding.abandon_survey",
+                        {"step_key": "A few quick questions", "answer": "Which numbers do you want?"},
+                        route_key="setup.questions",
+                    ),
+                    # An empty answer is not an answer and must not become a bucket.
+                    _event(
+                        "onboarding.abandon_survey",
+                        {"step_key": "Company details", "answer": "   "},
+                        route_key="setup.company",
+                    ),
+                    # Same event name, outside the stage's routes: out of scope.
+                    _event(
+                        "onboarding.abandon_survey",
+                        {"step_key": "Choose your plan", "answer": "not this stage"},
+                        route_key="pos",
+                    ),
+                ],
+            )
+
+            operator_email, operator_workspace, _ = await _new_workspace(
+                client, "journey-survey-operator"
+            )
+            operator_company_id = operator_workspace["company"]["id"]
+            await promote_to_admin(operator_email)
+            admin_headers = await login_headers(client, operator_email)
+
+            setup = await client.get(
+                "/api/v1/admin/journeys/why",
+                headers=admin_headers,
+                params={"stage": "setup_opened", "days": 30},
+            )
+            # The same event name on a route this stage does not own is excluded.
+            products = await client.get(
+                "/api/v1/admin/journeys/why",
+                headers=admin_headers,
+                params={"stage": "first_product", "days": 30},
+            )
+
+        assert setup.status_code == 200, setup.text
+        data = setup.json()
+        assert data["survey_total"] >= 4
+        counts = {row["answer"]: row["count"] for row in data["survey"]}
+        assert counts["expensive"] >= 2
+        assert counts["unclear"] >= 1
+        assert counts["Which numbers do you want?"] >= 1
+        assert "" not in counts
+        assert "not this stage" not in counts
+        # Ranked by count, and never more rows than the cap.
+        assert len(data["survey"]) <= 10
+        ordered = [row["count"] for row in data["survey"]]
+        assert ordered == sorted(ordered, reverse=True)
+
+        assert products.status_code == 200, products.text
+        product_data = products.json()
+        assert product_data["survey"] == []
+        assert product_data["survey_total"] == 0
+    finally:
+        for email, company_id in (
+            (merchant_email, merchant_company_id),
+            (operator_email, operator_company_id),
+        ):
+            if email:
+                await _purge_analytics(email, company_id)
+                await cleanup(email, company_id)
 
 
 async def test_journey_sessions_list_stalled_and_hide_internal() -> None:

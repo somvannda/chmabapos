@@ -5735,6 +5735,27 @@ function JourneyWhyGroup({ title, hint, rows, render }) {
   </section>;
 }
 
+function JourneyWhySurvey({ answers, total }) {
+  const answered = Number(total) || 0;
+  return <section className="rounded-xl border border-[#eeeeF2] bg-[#fcfcfd] p-4">
+    <div className="flex items-baseline justify-between gap-3">
+      <h3 className="text-xs font-extrabold text-[#3d3e47]">What&apos;s stopping them</h3>
+      <span className="shrink-0 text-[10px] font-semibold text-[#999aa4]">{answered} answer{answered === 1 ? "" : "s"}</span>
+    </div>
+    <p className="mt-1 text-[10px] leading-4 text-[#999aa4]">Optional answers from the setup wizard&apos;s one-question prompt. Explanatory only — never part of a funnel count.</p>
+    {answers.length === 0
+      ? <p className="mt-3 text-[11px] text-[#b0b1ba]">No survey answers yet.</p>
+      : <ul className="mt-3 space-y-1.5">{answers.map((row) => {
+        const share = answered > 0 ? Math.round((row.count / answered) * 100) : 0;
+        return <li key={row.answer} className="flex items-center gap-3 rounded-lg bg-white px-2.5 py-2 text-[11px]">
+          <span className="min-w-0 flex-1 truncate text-[#4d4e57]" title={row.answer || "no answer"}>{row.answer || "no answer"}</span>
+          <span className="shrink-0 text-[10px] font-semibold text-[#999aa4]">{share}%</span>
+          <span className="w-8 shrink-0 text-right font-extrabold text-[#202128]">{row.count}</span>
+        </li>;
+      })}</ul>}
+  </section>;
+}
+
 function JourneySessionTimeline({ timeline, onBack }) {
   return <div>
     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -5820,7 +5841,10 @@ function JourneyStageDrilldown({ token, stage, days, onClose }) {
           <div className="rounded-xl bg-[#fafafd] p-3"><p className="text-[10px] font-bold uppercase tracking-wide text-[#a1a2ab]">Events</p><p className="mt-1 text-sm font-extrabold">{why.sample_events}</p><p className="mt-0.5 text-[10px] text-[#999aa4]">in this window</p></div>
           <div className="rounded-xl bg-[#fafafd] p-3"><p className="text-[10px] font-bold uppercase tracking-wide text-[#a1a2ab]">Sessions</p><p className="mt-1 text-sm font-extrabold">{why.sample_sessions}</p><p className="mt-0.5 text-[10px] text-[#999aa4]">on these routes</p></div>
         </div>
-        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+        <div className="mt-4">
+          <JourneyWhySurvey answers={why.survey || []} total={why.survey_total || 0} />
+        </div>
+        <div className="mt-3 grid gap-3 lg:grid-cols-2">
           <JourneyWhyGroup title="Form validation failures" hint="Which form, field and rule blocked the step." rows={why.validation_failures} render={(row) => `${row.form || "form"} · ${row.field || "field"} · ${row.rule || "rule"}`} />
           <JourneyWhyGroup title="Failed requests" hint="Browser network errors, grouped by endpoint and status." rows={why.network_failures} render={(row) => `${row.route_key || "route"} · ${row.endpoint_key || "endpoint"} · ${row.status || "no status"}`} />
           <JourneyWhyGroup title="Dead clicks" hint="Controls that looked clickable and did nothing." rows={why.dead_clicks} render={(row) => row.element_key || "unknown element"} />
