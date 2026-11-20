@@ -1,6 +1,7 @@
 import { ApiError, createApiClient } from "@chmaba/api-client";
 import { AUTH_EXPIRED_EVENT, isSessionExpired } from "./lib/authSession";
 import { createRefreshCoordinator } from "./lib/refreshCoordinator";
+import { analytics, networkEndpointKey, networkErrorCode, safeTrack } from "./lib/analytics";
 
 const API_BASE_URL = (import.meta.env.VITE_API_URL || `${window.location.origin}/api/v1`).replace(/\/$/, "");
 
@@ -33,6 +34,16 @@ const client = createApiClient({
     if (isSessionExpired(status, token) && typeof window !== "undefined") {
       window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
     }
+  },
+  onRequestError: ({ method, path, status, body }) => {
+    // A request key and a machine code: the path has its ids masked and its
+    // query dropped, and the message is never read (it can quote an email).
+    safeTrack(analytics, "error.network", {
+      endpoint_key: networkEndpointKey(method, path),
+      status,
+      error_code: networkErrorCode(status, body),
+      retry: false,
+    });
   },
 });
 

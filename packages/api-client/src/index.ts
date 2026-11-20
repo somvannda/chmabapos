@@ -17,8 +17,27 @@ export type ApiClientOptions = {
   fetchImpl?: typeof fetch;
   /** Called on a 401 response before the error is thrown (e.g. to sign the user out). */
   onUnauthorized?: (status: number, token: string | null | undefined) => void;
+  /**
+   * Called for every failed request (a non-2xx response, or a fetch that never
+   * produced one). The raw path and body are handed over so the caller can
+   * reduce them to a value-free key; nothing here reaches the network.
+   */
+  onRequestError?: (failure: RequestFailure) => void;
   /** Build the error message from the response body. Defaults to the detail string. */
   formatError?: (body: unknown, status: number) => string;
+};
+
+export type RequestFailure = {
+  /** Uppercased HTTP verb, or "GET" when the caller used the default. */
+  method: string;
+  /** The path as requested (may carry a query string); mask before sending. */
+  path: string;
+  /** 0 for a request that never got a response. */
+  status: number;
+  /** Parsed response body, or null for a network failure. */
+  body: unknown;
+  /** True when fetch itself threw (offline, DNS, aborted). */
+  network: boolean;
 };
 
 export type RequestOptions = RequestInit & {
@@ -53,8 +72,19 @@ export function createApiClient(options: ApiClientOptions) {
   const doFetch = options.fetchImpl ?? fetch;
   const baseUrl = options.baseUrl.replace(/\/$/, "");
 
+  // Telemetry is observability: a broken reporter must never fail the request
+  // it is describing, so the callback is isolated from the request path.
+  function reportFailure(failure: RequestFailure) {
+    try {
+      options.onRequestError?.(failure);
+    } catch {
+      /* ignore */
+    }
+  }
+
   async function request<T>(path: string, init: RequestOptions = {}): Promise<T> {
     const { token: tokenOverride, storeId: storeIdOverride, ...rest } = init;
+    const method = String(rest.method || "GET").toUpperCase();
     const headers = new Headers(rest.headers);
     if (rest.body && !(rest.body instanceof FormData) && !headers.has("Content-Type")) {
       headers.set("Content-Type", "application/json");
@@ -63,11 +93,18 @@ export function createApiClient(options: ApiClientOptions) {
     if (token) headers.set("Authorization", `Bearer ${token}`);
     const storeId = storeIdOverride ?? options.getStoreId?.();
     if (storeId) headers.set("X-Store-ID", storeId);
-    const response = await doFetch(`${baseUrl}${path}`, { ...rest, headers, credentials: "include" });
+    let response: Response;
+    try {
+      response = await doFetch(`${baseUrl}${path}`, { ...rest, headers, credentials: "include" });
+    } catch (error) {
+      reportFailure({ method, path, status: 0, body: null, network: true });
+      throw error;
+    }
     const contentType = response.headers.get("content-type") || "";
     const body = contentType.includes("application/json") ? await response.json() : await response.text();
     if (!response.ok) {
       if (response.status === 401) options.onUnauthorized?.(response.status, token);
+      reportFailure({ method, path, status: response.status, body, network: false });
       const message = options.formatError ? options.formatError(body, response.status) : formatDetail(body, response.status);
       throw new ApiError(message, response.status, body);
     }
