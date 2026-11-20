@@ -4633,6 +4633,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/journeys/funnel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Activation Journey Funnel
+         * @description The cohort funnel: one signup cohort, read forward.
+         *
+         *     Unlike ``/funnel``, every stage counts the same companies, so a conversion
+         *     rate cannot exceed 100% or mix denominators. Stages a browser alone can see
+         *     are marked ``authoritative: false``.
+         */
+        get: operations["activation_journey_funnel_api_v1_admin_journeys_funnel_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/sales-analytics": {
         parameters: {
             query?: never;
@@ -7385,6 +7409,63 @@ export interface components {
              * @default 0
              */
             active_products: number;
+        };
+        /**
+         * AdminJourneyFunnelRead
+         * @description Companies created in the window and how far that cohort progressed.
+         */
+        AdminJourneyFunnelRead: {
+            /** Window Days */
+            window_days: number;
+            /**
+             * Cohort
+             * @default companies
+             */
+            cohort: string;
+            /**
+             * Total
+             * @default 0
+             */
+            total: number;
+            /** Stages */
+            stages?: components["schemas"]["AdminJourneyStageRead"][];
+        };
+        /**
+         * AdminJourneyStageRead
+         * @description One stage of the cohort activation funnel.
+         *
+         *     ``authoritative`` is False for stages only the browser can observe (opening
+         *     the setup wizard). Those explain the journey; they are never the number a
+         *     conversion rate is based on.
+         */
+        AdminJourneyStageRead: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /**
+             * Count
+             * @default 0
+             */
+            count: number;
+            /**
+             * Authoritative
+             * @default true
+             */
+            authoritative: boolean;
+            /** From Previous */
+            from_previous?: number | null;
+            /** From Start */
+            from_start?: number | null;
+            /** Median Seconds */
+            median_seconds?: number | null;
+            /** P90 Seconds */
+            p90_seconds?: number | null;
+            /**
+             * Stalled
+             * @default 0
+             */
+            stalled: number;
         };
         /** AdminMembershipRead */
         AdminMembershipRead: {
@@ -26216,6 +26297,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminFunnelRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    activation_journey_funnel_api_v1_admin_journeys_funnel_get: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminJourneyFunnelRead"];
                 };
             };
             /** @description Validation Error */

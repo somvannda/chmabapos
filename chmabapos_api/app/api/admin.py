@@ -28,6 +28,7 @@ from app.models import AuditLog, AuthSession, BillingPayment, BillingRefund, Com
 from app.services.pricing import CYCLE_META, period_end
 from app.services.orders import transaction_usage
 from app.services import health as health_service
+from app.services.activation import build_funnel as build_activation_funnel
 from app.schemas import (
     AdminActivityRead,
     AdminAttentionItemRead,
@@ -45,6 +46,7 @@ from app.schemas import (
     AdminFunnelEmailRead,
     AdminFunnelRead,
     AdminFunnelStageRead,
+    AdminJourneyFunnelRead,
     AdminTimeToFirstSaleRead,
     AdminInventorySummaryRead,
     AdminMembershipRead,
@@ -445,6 +447,21 @@ async def activation_funnel(
     )
 
     return AdminFunnelRead(window_days=days, stages=stages, stalled_signups=stalled_signups, stalled_workspaces=stalled_workspaces, time_to_first_sale=time_to_first_sale, email=email_stats)
+
+
+@router.get("/journeys/funnel", response_model=AdminJourneyFunnelRead)
+async def activation_journey_funnel(
+    _: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+    days: int = Query(default=30, ge=1, le=3650),
+) -> AdminJourneyFunnelRead:
+    """The cohort funnel: one signup cohort, read forward.
+
+    Unlike ``/funnel``, every stage counts the same companies, so a conversion
+    rate cannot exceed 100% or mix denominators. Stages a browser alone can see
+    are marked ``authoritative: false``.
+    """
+    return AdminJourneyFunnelRead(**await build_activation_funnel(db, days=days))
 
 
 @router.get("/sales-analytics", response_model=AdminSalesAnalyticsRead)
