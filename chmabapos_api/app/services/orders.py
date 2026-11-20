@@ -11,6 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.analytics import emit
 from app.billing import grace_deadline, load_entitlement
 from app.models import Company, Customer, ExchangeRate, InventoryBalance, Order, OrderItem, Payment, Plan, Product, ProductBatch, ProductSerial, ProductVariant, StockMovement, Store, Subscription, VariantInventoryBalance
 from app.services.activity import record_activity
@@ -305,6 +306,48 @@ async def ensure_transaction_available(db: AsyncSession, company_id: UUID) -> No
         )
 
 
+def order_payment_method_label(order: Order) -> str:
+    """The tender(s) that paid a sale, for the activation funnel.
+
+    ``mixed`` is its own honest value: a split cash + KHQR sale is not a cash
+    sale, and reporting it as one would flatter the KHQR numbers.
+    """
+    methods = [str(tender.method) for tender in (order.tenders or []) if getattr(tender, "kind", None) == "payment" and getattr(tender, "method", None)]
+    if not methods:
+        methods = [str(payment.provider) for payment in (order.payments or []) if getattr(payment, "provider", None) and payment.provider not in {"manual"}]
+    unique = sorted(set(methods))
+    if not unique:
+        return "unknown"
+    if len(unique) == 1:
+        return unique[0][:40]
+    return "mixed"
+
+
+def order_item_count(order: Order) -> int:
+    """Units sold, falling back to line count when the quantities are fractional."""
+    try:
+        units = int(sum((item.quantity or 0) for item in (order.items or [])) or 0)
+    except (TypeError, ValueError):
+        units = 0
+    return units or len(order.items or [])
+
+
+def order_total_bucket(total: Decimal | None) -> str:
+    """A coarse order-value band. The currency travels with it, so a KHR sale
+    is never read as a USD one."""
+    try:
+        amount = Decimal(str(total if total is not None else 0))
+    except (TypeError, ValueError, ArithmeticError):
+        return "unknown"
+    if amount < 10:
+        return "0-10"
+    if amount < 50:
+        return "10-50"
+    if amount < 200:
+        return "50-200"
+    return "200+"
+
+
 async def complete_order(db: AsyncSession, order_id: UUID, approved_at: datetime | None = None) -> Order:
     result = await db.execute(
         select(Order)
@@ -483,6 +526,22 @@ async def complete_order(db: AsyncSession, order_id: UUID, approved_at: datetime
             remaining -= take
     order.status = "paid"
     order.paid_at = completed_at
+    # The single authoritative transition to paid, whichever path settled the
+    # sale (till checkout, KHQR webhook/reconcile, manual mark-paid, reservation
+    # collection). emit() adds the row to this transaction and never raises, so
+    # the milestone survives or rolls back with the sale.
+    emit(
+        db,
+        "order.paid",
+        company_id=store.company_id,
+        store_id=order.store_id,
+        properties={
+            "payment_method": order_payment_method_label(order),
+            "currency": (order.currency_code or "USD")[:8],
+            "items": order_item_count(order),
+            "total_bucket": order_total_bucket(order.total),
+        },
+    )
     for payment in order.payments:
         if payment.status != "paid" or payment.approved_at is None:
             payment.status = "paid"

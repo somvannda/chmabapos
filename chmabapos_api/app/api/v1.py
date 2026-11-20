@@ -9388,6 +9388,15 @@ async def _refund_order(db: AsyncSession, context: StoreContext, membership: Mem
     await queue_refund_note(db, context.store, order_number=order.order_number, total=total, currency_code=order.currency_code, method=method, actor=context.user.full_name)
     await log_audit(db, context.membership, context.store.id, "refunded", "order", order.id, {"order_number": order.order_number, "total": str(total), "method": method}, context.user)
     await record_activity(db, "order.refunded", company_id=context.membership.company_id, store_id=context.store.id, details={"company": await _company_name(db, context.membership.company_id), "store": context.store.name, "order_number": order.order_number, "amount": f"{total} {order.currency_code}", "method": method})
+    # Authoritative activation milestone: a refund or full void. Non-raising and
+    # on this transaction, so it rolls back with the refund row.
+    emit(
+        db,
+        "order.refunded",
+        company_id=context.membership.company_id,
+        store_id=context.store.id,
+        properties={"reason": (payload.reason or "").strip()[:80] or "unspecified", "currency": (order.currency_code or "USD")[:8]},
+    )
     await db.commit()
     # Best-effort buyer confirmation in a second transaction so a mail problem
     # cannot undo the refund.

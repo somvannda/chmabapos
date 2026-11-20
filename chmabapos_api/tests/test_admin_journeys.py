@@ -4,8 +4,11 @@ from __future__ import annotations
 import uuid
 
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select, text
 
+from app.db import SessionLocal
 from app.main import app
+from app.models import AnalyticsEvent
 from tests.test_admin_funnel import cleanup, create_free_workspace, login_headers, promote_to_admin
 
 STAGE_KEYS = [
@@ -93,6 +96,64 @@ async def test_journey_funnel_is_monotonic_and_uses_one_cohort() -> None:
             assert stage["stalled"] == data["total"] - stage["count"]
             assert stage["median_seconds"] is None or stage["median_seconds"] >= 0
     finally:
+        await cleanup(email, company_id)
+
+
+async def test_paid_order_emits_an_authoritative_milestone() -> None:
+    email = f"journey-sale-{uuid.uuid4().hex[:10]}@example.com"
+    company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            workspace, headers = await create_free_workspace(client, email)
+            company_id = workspace["company"]["id"]
+            store_id = workspace["store"]["id"]
+            product = await client.post(
+                "/api/v1/products",
+                headers={**headers, "X-Store-ID": store_id},
+                json={
+                    "name": "Paid Milestone Widget",
+                    "sku": f"PM-{uuid.uuid4().hex[:8]}",
+                    "price": "5.00",
+                    "opening_stock": 1,
+                },
+            )
+            assert product.status_code == 201
+            order = await client.post(
+                "/api/v1/orders",
+                headers={**headers, "X-Store-ID": store_id},
+                json={
+                    "items": [{"product_id": product.json()["id"], "quantity": 1}],
+                    "payment_method": "cash",
+                },
+            )
+            assert order.status_code == 201
+            assert order.json()["status"] == "paid"
+
+        async with SessionLocal() as db:
+            rows = (
+                await db.execute(
+                    select(AnalyticsEvent).where(
+                        AnalyticsEvent.company_id == uuid.UUID(company_id),
+                        AnalyticsEvent.name == "order.paid",
+                    )
+                )
+            ).scalars().all()
+
+        assert len(rows) == 1
+        event = rows[0]
+        assert event.source == "api"
+        assert event.context == {"authoritative": True}
+        assert str(event.store_id) == store_id
+        assert event.properties["payment_method"] == "cash"
+        assert event.properties["currency"] == "USD"
+        assert event.properties["items"] == 1
+        assert event.properties["total_bucket"] == "0-10"
+        # The milestone describes the sale, never the buyer.
+        assert "Paid Milestone" not in str(event.properties)
+    finally:
+        async with SessionLocal() as db:
+            await db.execute(text("DELETE FROM analytics_events WHERE company_id = :company_id"), {"company_id": company_id})
+            await db.commit()
         await cleanup(email, company_id)
 
 
