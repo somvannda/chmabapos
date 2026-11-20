@@ -192,3 +192,41 @@ def test_from_header_uses_the_product_display_name() -> None:
     assert mail_service.format_from({}) == f"Chmaba POS <{settings.smtp_from}>"
     # An explicit platform override still wins over the default.
     assert mail_service.format_from({"mail_from": "hi@acme.test", "mail_from_name": "Acme"}) == "Acme <hi@acme.test>"
+
+
+def test_automated_mail_derives_branded_senders_from_the_default_domain() -> None:
+    """One SMTP_FROM is enough: each purpose gets its own address on that domain."""
+    import app.services.mail as mail_service
+
+    cfg = {"mail_from": "no-reply@chmaba.com", "mail_from_name": "Chmaba POS"}
+    expected = {
+        "billing": "billing@chmaba.com",
+        "support": "support@chmaba.com",
+        "security": "security@chmaba.com",
+        "onboarding": "hello@chmaba.com",
+        "receipts": "receipts@chmaba.com",
+        "notifications": "notifications@chmaba.com",
+        "marketing": "hello@chmaba.com",
+        "ops": "ops@chmaba.com",
+    }
+    for purpose, address in expected.items():
+        sender = mail_service.resolve_purpose_sender(cfg, purpose)
+        assert sender["address"] == address
+        assert sender["name"] == "Chmaba POS"
+
+
+def test_sender_override_and_source_mapping() -> None:
+    import app.services.mail as mail_service
+
+    cfg = {"mail_from": "no-reply@chmaba.com", "mail_from_billing": "invoices@acme.test"}
+    assert mail_service.resolve_purpose_sender(cfg, "billing")["address"] == "invoices@acme.test"
+    # Unknown purposes and unusable defaults fall back to the platform sender.
+    assert mail_service.resolve_purpose_sender(cfg, "unknown")["address"] == "no-reply@chmaba.com"
+    assert mail_service.resolve_purpose_sender({"mail_from": "relay"}, "billing")["address"] == "relay"
+
+    assert mail_service.purpose_from_source("billing_reminder") == "billing"
+    assert mail_service.purpose_from_source("receipt") == "receipts"
+    assert mail_service.purpose_from_source("store_note") == "notifications"
+    assert mail_service.purpose_from_source("manual") == "marketing"
+    assert mail_service.purpose_from_source("drip") == "onboarding"
+    assert mail_service.purpose_from_source("not_a_source") is None

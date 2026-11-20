@@ -71,6 +71,15 @@ services:
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_FROM: ${SMTP_FROM:-no-reply@chmaba.com}
       MAIL_FROM_NAME: ${MAIL_FROM_NAME:-Chmaba POS}
+      MAIL_REPLY_TO: ${MAIL_REPLY_TO:-support@chmaba.com}
+      MAIL_FROM_BILLING: ${MAIL_FROM_BILLING:-billing@chmaba.com}
+      MAIL_FROM_SUPPORT: ${MAIL_FROM_SUPPORT:-support@chmaba.com}
+      MAIL_FROM_SECURITY: ${MAIL_FROM_SECURITY:-security@chmaba.com}
+      MAIL_FROM_ONBOARDING: ${MAIL_FROM_ONBOARDING:-hello@chmaba.com}
+      MAIL_FROM_RECEIPTS: ${MAIL_FROM_RECEIPTS:-receipts@chmaba.com}
+      MAIL_FROM_NOTIFICATIONS: ${MAIL_FROM_NOTIFICATIONS:-notifications@chmaba.com}
+      MAIL_FROM_MARKETING: ${MAIL_FROM_MARKETING:-hello@chmaba.com}
+      MAIL_FROM_OPS: ${MAIL_FROM_OPS:-ops@chmaba.com}
       SMTP_USERNAME: ${SMTP_USERNAME:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_USE_TLS: ${SMTP_USE_TLS:-true}

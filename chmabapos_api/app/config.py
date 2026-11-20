@@ -54,7 +54,20 @@ class Settings(BaseSettings):
     # Friendly sender name shown by mail clients. Without it they fall back to
     # the address local-part ("no-reply"), so default it to the product name.
     mail_from_name: str = "Chmaba POS"
+    # Replies go to a monitored inbox. Derived as ``support@<mail_from domain>``
+    # when unset, so billing/support mail never points at a no-reply mailbox.
     mail_reply_to: str | None = None
+    # Optional per-purpose From overrides. Unset values are derived from the
+    # ``smtp_from`` domain (see ``app.services.mail``), which keeps the branded
+    # addresses working with only SMTP_FROM configured.
+    mail_from_billing: str | None = None
+    mail_from_support: str | None = None
+    mail_from_security: str | None = None
+    mail_from_onboarding: str | None = None
+    mail_from_receipts: str | None = None
+    mail_from_notifications: str | None = None
+    mail_from_marketing: str | None = None
+    mail_from_ops: str | None = None
     # Where merchant replies to support tickets are emailed. Optional; when
     # unset, merchant replies only surface in the admin inbox and Telegram.
     support_inbox: str | None = None

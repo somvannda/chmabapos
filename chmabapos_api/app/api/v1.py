@@ -2521,6 +2521,7 @@ async def _email_support_inbox(db: AsyncSession, ticket: SupportTicket, merchant
             html_to_text(html),
             html=html,
             reply_to=merchant.email,
+            purpose="ops",
         )
     except Exception:
         pass
@@ -2622,6 +2623,7 @@ async def support_escalate(
             f"We received your support request ({reference})",
             html_to_text(html),
             html=html,
+            purpose="support",
         )
     except Exception:
         pass
@@ -11587,7 +11589,7 @@ async def email_order_receipt(order_id: UUID, context: StoreContext = Depends(ge
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This order has no customer email to send to")
     company_name = (await db.execute(select(Company.name).where(Company.id == context.membership.company_id))).scalar_one()
     subject, body = receipt_body(order, context.store, company_name)
-    sent = await send_email(recipient, subject, html_to_text(body), html=body)
+    sent = await send_email(recipient, subject, html_to_text(body), html=body, purpose="receipts")
     if not sent:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Could not send the receipt email")
     return {"ok": True, "email": recipient}
@@ -12226,7 +12228,7 @@ async def send_daily_summary_email(membership: Membership = notifications_roles,
     body = await daily_summary_body(db, context.store, today)
     sent_any = False
     for email in owner_emails:
-        if await send_email(email, subject, html_to_text(body), html=body):
+        if await send_email(email, subject, html_to_text(body), html=body, purpose="notifications"):
             sent_any = True
     if not sent_any:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Could not send summary email")
@@ -12249,7 +12251,7 @@ async def send_low_stock_email(membership: Membership = notifications_roles, con
     else:
         subject, body = note
     for email in owner_emails:
-        await send_email(email, subject, html_to_text(body), html=body)
+        await send_email(email, subject, html_to_text(body), html=body, purpose="notifications")
     return {"ok": True, "low_stock_items": len(low), "emails": list(owner_emails)}
 
 @router.patch("/customers/{customer_id}/points", tags=["customers"])
