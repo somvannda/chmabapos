@@ -5694,12 +5694,169 @@ function healthFix(check) {
   return visible ? link : null;
 }
 
+// Stages the diagnostics endpoints can explain. `second_sale` is a funnel row
+// but has no dedicated diagnostic pass yet, so it stays a plain, non-clickable
+// row instead of opening a drawer that would always read "nothing recorded".
+const JOURNEY_STAGE_ROUTES = {
+  account_created: ["signup", "login"],
+  email_verified: ["signup", "login"],
+  first_login: ["signup", "login"],
+  setup_opened: ["setup.company", "setup.questions", "setup.plan"],
+  workspace_created: ["setup.company", "setup.questions", "setup.plan"],
+  first_product: ["products"],
+  shift_opened: ["pos", "dashboard", "orders"],
+  first_sale: ["pos", "dashboard", "orders"],
+};
+
+function journeyDwell(ms) {
+  if (ms == null) return "-";
+  if (ms < 1000) return `${Math.round(ms)} ms`;
+  if (ms < 60000) return `${(ms / 1000).toFixed(1)} s`;
+  return `${(ms / 60000).toFixed(1)} min`;
+}
+
+function journeyValue(value) {
+  if (value == null) return "-";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return JSON.stringify(value);
+}
+
+function JourneyWhyGroup({ title, hint, rows, render }) {
+  return <section className="rounded-xl border border-[#eeeeF2] bg-[#fcfcfd] p-4">
+    <h3 className="text-xs font-extrabold text-[#3d3e47]">{title}</h3>
+    <p className="mt-1 text-[10px] leading-4 text-[#999aa4]">{hint}</p>
+    {rows.length === 0
+      ? <p className="mt-3 text-[11px] text-[#b0b1ba]">Nothing recorded in this window.</p>
+      : <ul className="mt-3 space-y-1.5">{rows.map((row, index) => <li key={`${index}-${row.count}`} className="flex items-center justify-between gap-3 rounded-lg bg-white px-2.5 py-2 text-[11px]">
+        <span className="min-w-0 truncate text-[#4d4e57]" title={render(row)}>{render(row)}</span>
+        <span className="shrink-0 font-extrabold text-[#202128]">{row.count}</span>
+      </li>)}</ul>}
+  </section>;
+}
+
+function JourneySessionTimeline({ timeline, onBack }) {
+  return <div>
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <button type="button" onClick={onBack} className="inline-flex items-center gap-1.5 text-xs font-bold text-[#777883] transition hover:text-[#303139]"><ArrowLeft size={14} /> Back to the stage</button>
+      <span className="font-mono text-[10px] text-[#a1a2ab]">#{timeline.id.slice(0, 8)}</span>
+    </div>
+    <div className="mt-3 rounded-xl bg-[#fafafd] px-4 py-3 text-[11px] leading-5 text-[#777883]">
+      <p><strong className="text-[#202128]">{timeline.events.length}</strong> events · {timeline.source} · {timeline.device_type || "unknown device"} · {timeline.browser || "unknown browser"} · {timeline.locale || "no locale"}{timeline.exit_route ? <> · exit <span className="font-mono text-[10px]">{timeline.exit_route}</span></> : null}</p>
+      <p className="text-[10px] text-[#999aa4]">Started {new Date(timeline.started_at).toLocaleString()} · last seen {new Date(timeline.last_seen_at).toLocaleString()}</p>
+      {timeline.truncated && <p className="mt-1 text-[10px] font-semibold text-[#ad7d1c]">Showing the first 500 events of a longer session.</p>}
+    </div>
+    {timeline.events.length === 0
+      ? <p className="mt-4 rounded-xl border border-[#eeeeF2] bg-white px-3 py-6 text-center text-xs text-[#999aa4]">This session recorded no events.</p>
+      : <div className="app-scrollbar mt-3 max-h-[52vh] space-y-1.5 overflow-y-auto pr-1">{timeline.events.map((event, index) => <div key={`${index}-${event.name}`} className="rounded-xl border border-[#f0f0f3] bg-white px-3 py-2.5">
+        <div className="flex flex-wrap items-center gap-2 text-[11px]">
+          <span className="font-mono text-[10px] text-[#999aa4]">{new Date(event.occurred_at).toLocaleTimeString()}</span>
+          <span className="font-extrabold text-[#3d3e47]">{event.name}</span>
+          {event.route_key ? <Badge tone="neutral">{event.route_key}</Badge> : null}
+          {event.element_key ? <span className="font-mono text-[10px] text-[#686974]">{event.element_key}</span> : null}
+          {event.duration_ms != null ? <span className="text-[10px] text-[#999aa4]">{journeyDwell(event.duration_ms)}</span> : null}
+        </div>
+        {Object.keys(event.properties || {}).length > 0 ? <p className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-[#85868e]">{Object.entries(event.properties).slice(0, 8).map(([key, value]) => <span key={key}><span className="font-semibold text-[#686974]">{key}</span> {journeyValue(value)}</span>)}</p> : null}
+      </div>)}</div>}
+  </div>;
+}
+
+function JourneyStageDrilldown({ token, stage, days, onClose }) {
+  const [why, setWhy] = useState(null);
+  const [sessions, setSessions] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [timeline, setTimeline] = useState(null);
+  const [timelineLoading, setTimelineLoading] = useState(false);
+  const [timelineError, setTimelineError] = useState("");
+  const routeKeys = JOURNEY_STAGE_ROUTES[stage.key] || [];
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError("");
+    setWhy(null);
+    setSessions(null);
+    setTimeline(null);
+    setTimelineError("");
+    Promise.all([
+      api.adminJourneyWhy(token, stage.key, days),
+      api.adminJourneySessions(token, stage.key, days, 50),
+    ]).then(([whyRow, sessionRow]) => {
+      if (cancelled) return;
+      setWhy(whyRow);
+      setSessions(sessionRow);
+    }).catch((requestError) => {
+      if (!cancelled) setError(requestError.message || "Could not load this stage");
+    }).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [token, stage.key, days]);
+  const openTimeline = async (session) => {
+    setTimelineLoading(true);
+    setTimelineError("");
+    try {
+      setTimeline(await api.adminJourneySession(token, session.id));
+    } catch (requestError) {
+      setTimelineError(requestError.message || "Could not load the timeline");
+    } finally {
+      setTimelineLoading(false);
+    }
+  };
+  return <Modal
+    open
+    title={`Why "${stage.label}" leaks`}
+    description={`Friction recorded on ${routeKeys.join(", ")} in the last ${days} days. Internal and platform staff traffic is excluded.`}
+    onClose={onClose}
+    width="max-w-[900px]"
+  >
+    {loading ? <p className="py-10 text-center text-xs text-[#999aa4]">Reading the stage...</p>
+      : error ? <p className="rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b]">{error}</p>
+      : timeline ? <JourneySessionTimeline timeline={timeline} onBack={() => { setTimeline(null); setTimelineError(""); }} />
+      : why && sessions ? <>
+        <div className="grid gap-2 sm:grid-cols-4">
+          <div className="rounded-xl bg-[#fafafd] p-3"><p className="text-[10px] font-bold uppercase tracking-wide text-[#a1a2ab]">Median dwell</p><p className="mt-1 text-sm font-extrabold">{journeyDwell(why.dwell.median_ms)}</p><p className="mt-0.5 text-[10px] text-[#999aa4]">{why.dwell.samples} page left{why.dwell.samples === 1 ? "" : "s"}</p></div>
+          <div className="rounded-xl bg-[#fafafd] p-3"><p className="text-[10px] font-bold uppercase tracking-wide text-[#a1a2ab]">p90 dwell</p><p className="mt-1 text-sm font-extrabold">{journeyDwell(why.dwell.p90_ms)}</p><p className="mt-0.5 text-[10px] text-[#999aa4]">slowest decile</p></div>
+          <div className="rounded-xl bg-[#fafafd] p-3"><p className="text-[10px] font-bold uppercase tracking-wide text-[#a1a2ab]">Events</p><p className="mt-1 text-sm font-extrabold">{why.sample_events}</p><p className="mt-0.5 text-[10px] text-[#999aa4]">in this window</p></div>
+          <div className="rounded-xl bg-[#fafafd] p-3"><p className="text-[10px] font-bold uppercase tracking-wide text-[#a1a2ab]">Sessions</p><p className="mt-1 text-sm font-extrabold">{why.sample_sessions}</p><p className="mt-0.5 text-[10px] text-[#999aa4]">on these routes</p></div>
+        </div>
+        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+          <JourneyWhyGroup title="Form validation failures" hint="Which form, field and rule blocked the step." rows={why.validation_failures} render={(row) => `${row.form || "form"} · ${row.field || "field"} · ${row.rule || "rule"}`} />
+          <JourneyWhyGroup title="Failed requests" hint="Browser network errors, grouped by endpoint and status." rows={why.network_failures} render={(row) => `${row.route_key || "route"} · ${row.endpoint_key || "endpoint"} · ${row.status || "no status"}`} />
+          <JourneyWhyGroup title="Dead clicks" hint="Controls that looked clickable and did nothing." rows={why.dead_clicks} render={(row) => row.element_key || "unknown element"} />
+          <JourneyWhyGroup title="Rage clicks" hint="Repeated frustrated clicks on the same control." rows={why.rage_clicks} render={(row) => row.element_key || "unknown element"} />
+        </div>
+        <div className="mt-5">
+          <div className="flex items-end justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-extrabold">Sessions that stopped here</h3>
+              <p className="mt-1 text-[11px] text-[#999aa4]">Last known route is one of this stage's routes and no later milestone followed.</p>
+            </div>
+            <Badge tone="neutral">{sessions.sessions.length}</Badge>
+          </div>
+          {timelineError ? <p className="mt-3 rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b]">{timelineError}</p> : null}
+          {timelineLoading ? <p className="mt-3 text-xs text-[#999aa4]">Loading the timeline...</p> : null}
+          {sessions.sessions.length === 0
+            ? <p className="mt-3 rounded-xl border border-[#eeeeF2] bg-white px-3 py-6 text-center text-xs text-[#999aa4]">No stalled sessions in this window.</p>
+            : <div className="mt-3 divide-y divide-[#f0f0f3] overflow-hidden rounded-xl border border-[#f0f0f3]">{sessions.sessions.map((session) => <button key={session.id} type="button" onClick={() => openTimeline(session)} className="flex w-full flex-wrap items-center justify-between gap-2 bg-white px-3 py-2.5 text-left text-[11px] transition hover:bg-[#fafafd]">
+              <div className="min-w-0">
+                <p className="font-bold text-[#3d3e47]">{new Date(session.started_at).toLocaleString()} <span className="ml-1 font-mono text-[10px] font-normal text-[#a1a2ab]">#{session.id.slice(0, 8)}</span></p>
+                <p className="mt-0.5 text-[10px] text-[#999aa4]">{session.device_type || "unknown device"} · {session.browser || "unknown browser"} · {session.locale || "no locale"} · {session.source} · {session.events} event{session.events === 1 ? "" : "s"}</p>
+              </div>
+              <span className="flex shrink-0 items-center gap-1 text-[10px] text-[#999aa4]">last seen {new Date(session.last_seen_at).toLocaleTimeString()} <ChevronRight size={14} /></span>
+            </button>)}</div>}
+        </div>
+      </> : null}
+  </Modal>;
+}
+
 function AdminJourneys({ token }) {
   const [data, setData] = useState(null);
   const [health, setHealth] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [days, setDays] = useState("30");
+  const [selectedStage, setSelectedStage] = useState(null);
   const load = async () => {
     setLoading(true);
     setError("");
@@ -5728,7 +5885,7 @@ function AdminJourneys({ token }) {
   return <div className="mx-auto max-w-[1100px] p-5 lg:p-8">
     <AdminPageHeader
       title="Activation journeys"
-      description="One signup cohort, read forward from account creation to a repeat sale. Every stage counts the same workspaces."
+      description="One signup cohort, read forward from account creation to a repeat sale. Every stage counts the same workspaces. Click a stage to see the errors, failed requests and sessions behind it."
     />
     <div className="mt-5 flex justify-end">
       <select value={days} onChange={(event) => setDays(event.target.value)} className="h-10 rounded-xl border border-[#e4e4eb] bg-white px-3 text-xs font-semibold text-[#4f5059]">{[7, 30, 90, 365].map((value) => <option key={value} value={value}>Last {value} days</option>)}</select>
@@ -5747,20 +5904,34 @@ function AdminJourneys({ token }) {
         <span>{health.lag_seconds == null ? "No events yet" : `newest event ${asDuration(health.lag_seconds)} ago`}</span>
       </div>}
       <div className="mt-5 overflow-hidden rounded-2xl border border-[#e9e9ef] bg-white">
-        {data.stages.map((stage) => <div key={stage.key} className="border-b border-[#f0f0f3] px-4 py-4 last:border-0">
-          <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-            <span className="flex items-center gap-2 font-bold text-[#3d3e47]">
-              {stage.label}
-              {!stage.authoritative && <Badge tone="neutral">explains, not counted</Badge>}
-            </span>
-            <span className="text-[#777883]"><strong className="text-[#202128]">{stage.count}</strong> · {pct(stage.from_previous)} from previous · {pct(stage.from_start)} of cohort</span>
-          </div>
-          <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-[#f1f1f5]"><div className="h-full rounded-full bg-[#6957f5]" style={{ width: `${Math.max(2, Math.round((stage.count / max) * 100))}%` }} /></div>
-          <p className="mt-1.5 text-[10px] text-[#a0a1aa]">{stage.stalled} not yet reached · median {asDuration(stage.median_seconds)} · p90 {asDuration(stage.p90_seconds)} after signup</p>
-        </div>)}
+        {data.stages.map((stage) => {
+          const explainable = Boolean(JOURNEY_STAGE_ROUTES[stage.key]);
+          const Row = explainable ? "button" : "div";
+          return <Row
+            key={stage.key}
+            {...(explainable ? { type: "button", onClick: () => setSelectedStage(stage), "aria-label": `Explain ${stage.label}` } : {})}
+            className={`w-full border-b border-[#f0f0f3] px-4 py-4 text-left last:border-0 ${explainable ? "transition hover:bg-[#fafafd]" : ""}`}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+              <span className="flex items-center gap-2 font-bold text-[#3d3e47]">
+                {stage.label}
+                {!stage.authoritative && <Badge tone="neutral">explains, not counted</Badge>}
+              </span>
+              <span className="text-[#777883]"><strong className="text-[#202128]">{stage.count}</strong> · {pct(stage.from_previous)} from previous · {pct(stage.from_start)} of cohort</span>
+            </div>
+            <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-[#f1f1f5]"><div className="h-full rounded-full bg-[#6957f5]" style={{ width: `${Math.max(2, Math.round((stage.count / max) * 100))}%` }} /></div>
+            <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2 text-[10px] text-[#a0a1aa]">
+              <span>{stage.stalled} not yet reached · median {asDuration(stage.median_seconds)} · p90 {asDuration(stage.p90_seconds)} after signup</span>
+              {explainable
+                ? <span className="inline-flex items-center gap-1 font-bold text-[#6957f5]">Why this stage <ChevronRight size={12} /></span>
+                : <span className="text-[#c0c1c9]">No diagnostics for this stage yet</span>}
+            </div>
+          </Row>;
+        })}
       </div>
       <p className="mt-4 text-[10px] leading-4 text-[#a0a1aa]">A missing client event never removes a merchant from a later stage: creating a workspace implies verification and sign-in. That is why the stages only ever shrink.</p>
     </>}
+    {selectedStage && <JourneyStageDrilldown token={token} stage={selectedStage} days={days} onClose={() => setSelectedStage(null)} />}
   </div>;
 }
 
