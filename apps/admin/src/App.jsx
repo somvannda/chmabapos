@@ -5640,11 +5640,68 @@ function AdminFunnel({ token }) {
   </div>;
 }
 
-function AdminSystemHealth({ token, notify }) {
+const HEALTH_CATEGORY_LABELS = { infrastructure: "Infrastructure", payments: "Payments", clients: "Client apps", delivery: "Delivery", integrations: "Integrations" };
+const HEALTH_STATUS_RANK = { down: 0, degraded: 1, unknown: 2, ok: 3, skipped: 4 };
+const HEALTH_SEVERITY_RANK = { critical: 0, warning: 1, info: 2 };
+const HEALTH_DOT_COLORS = { green: "#77bb4b", yellow: "#dca93c", red: "#dc6b60", neutral: "#9899a4" };
+// Only links that actually fix the named check. A storefront outage is not a
+// settings problem, so it deliberately has no shortcut here.
+const HEALTH_FIX_LINKS = {
+  ai_assistant: { page: "settings", label: "Open AI settings" },
+  email_outbound: { page: "settings", label: "Open mail settings" },
+  khqr_links: { page: "payments", label: "Open payment links" },
+};
+
+function healthTone(status) {
+  return status === "ok" ? "green" : status === "degraded" ? "yellow" : status === "down" ? "red" : "neutral";
+}
+
+// "38s", "4m", "2h 05m", "3d 4h" - a duration an operator can scan, not a
+// number of seconds they have to divide.
+function healthDuration(seconds) {
+  const total = Math.max(0, Math.round(seconds));
+  if (total < 90) return `${total}s`;
+  const minutes = Math.round(total / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return minutes % 60 ? `${hours}h ${String(minutes % 60).padStart(2, "0")}m` : `${hours}h`;
+  const days = Math.floor(hours / 24);
+  return hours % 24 ? `${days}d ${hours % 24}h` : `${days}d`;
+}
+
+function healthAgo(value, now) {
+  if (!value) return "";
+  const seconds = (now - new Date(value).getTime()) / 1000;
+  if (!Number.isFinite(seconds)) return "";
+  if (seconds < 45) return "just now";
+  if (seconds < 3600) return `${Math.max(1, Math.round(seconds / 60))}m ago`;
+  if (seconds < 86400) return `${Math.round(seconds / 3600)}h ago`;
+  return `${Math.round(seconds / 86400)}d ago`;
+}
+
+function healthTransitionKind(event) {
+  if (event.status === "ok" && (event.previous_status === "down" || event.previous_status === "degraded")) return "recovered";
+  if (event.status === "down") return "down";
+  if (event.status === "degraded") return "degraded";
+  return "other";
+}
+
+function healthFix(check) {
+  const link = HEALTH_FIX_LINKS[check.name];
+  if (!link) return null;
+  const visible = check.status === "down" || check.status === "degraded" || (check.name === "ai_assistant" && check.status === "skipped");
+  return visible ? link : null;
+}
+
+function AdminSystemHealth({ token, notify, onNavigate }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [transitionFilter, setTransitionFilter] = useState("all");
+  const [checkFilter, setCheckFilter] = useState("");
+  const [now, setNow] = useState(() => Date.now());
   const load = async (silent = false) => {
     if (!silent) setLoading(true);
     try { setData(await api.adminSystemHealth(token)); setError(""); }
@@ -5652,60 +5709,200 @@ function AdminSystemHealth({ token, notify }) {
     finally { if (!silent) setLoading(false); }
   };
   useEffect(() => { load(); }, [token]);
+  // A monitoring page should not need a manual refresh. The clock keeps
+  // "42s ago" honest; the silent poll only runs while the tab is visible, so a
+  // forgotten admin tab does not poll forever.
+  useEffect(() => {
+    const clock = setInterval(() => setNow(Date.now()), 15000);
+    const refresh = setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      api.adminSystemHealth(token)
+        .then((next) => { setData(next); setError(""); })
+        .catch(() => { /* keep the last board; the manual Refresh reports the error */ });
+    }, 30000);
+    return () => { clearInterval(clock); clearInterval(refresh); };
+  }, [token]);
   const runNow = async () => {
     setRunning(true);
     try { setData(await api.adminRunSystemHealth(token)); setError(""); notify("Health checks completed"); }
     catch (requestError) { setError(requestError.message || "Could not run health checks"); }
     finally { setRunning(false); }
   };
-  const toneFor = (status) => status === "ok" ? "green" : status === "degraded" ? "yellow" : status === "down" ? "red" : "neutral";
   const checks = data?.checks || [];
+  const events = data?.events || [];
   const counts = checks.reduce((totals, check) => { totals[check.status] = (totals[check.status] || 0) + 1; return totals; }, {});
-  const overallTone = data?.stale ? "neutral" : toneFor(data?.overall_status);
+  const overallTone = data?.stale ? "neutral" : healthTone(data?.overall_status);
   const overallLabel = !data ? "Waiting for the first sweep" : data.stale ? "Last sweep is stale" : data.overall_status === "ok" ? "All systems operational" : data.overall_status === "degraded" ? "Degraded dependencies" : data.overall_status === "down" ? "Platform outage" : "No sweep has run yet";
   const labelFor = (name) => (checks.find((check) => check.name === name)?.label || name);
+  const visibleChecks = statusFilter === "all" ? checks : checks.filter((check) => check.status === statusFilter);
+  const categoryGroups = (() => {
+    const groups = new Map();
+    visibleChecks.forEach((check) => {
+      const key = check.category || "other";
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(check);
+    });
+    return [...groups.entries()].map(([key, items]) => ({
+      key,
+      checks: [...items].sort((a, b) => (HEALTH_STATUS_RANK[a.status] ?? 9) - (HEALTH_STATUS_RANK[b.status] ?? 9) || (HEALTH_SEVERITY_RANK[a.severity] ?? 9) - (HEALTH_SEVERITY_RANK[b.severity] ?? 9) || a.label.localeCompare(b.label)),
+      worst: Math.min(...items.map((check) => HEALTH_STATUS_RANK[check.status] ?? 9)),
+      broken: items.filter((check) => check.status === "down" || check.status === "degraded").length,
+    })).sort((a, b) => a.worst - b.worst || (HEALTH_CATEGORY_LABELS[a.key] || a.key).localeCompare(HEALTH_CATEGORY_LABELS[b.key] || b.key));
+  })();
+  const maxLatency = Math.max(1, ...checks.map((check) => check.latency_ms || 0));
+  const eventStats = useMemo(() => {
+    const stats = new Map();
+    events.forEach((event) => {
+      const entry = stats.get(event.check_name) || { changes: 0, last: null };
+      entry.changes += 1;
+      if (!entry.last || new Date(event.created_at) > new Date(entry.last.created_at)) entry.last = event;
+      stats.set(event.check_name, entry);
+    });
+    return stats;
+  }, [events]);
+  // "Telegram alerts changed 7 times" is the statistic an operator actually
+  // acts on: it separates a flapping probe from a dependency that broke once.
+  const lastDay = events.filter((event) => now - new Date(event.created_at).getTime() <= 86400000);
+  const busiest = (() => {
+    const tally = new Map();
+    lastDay.forEach((event) => tally.set(event.check_name, (tally.get(event.check_name) || 0) + 1));
+    return [...tally.entries()].sort((a, b) => b[1] - a[1])[0] || null;
+  })();
+  const transitionKinds = new Map(events.map((event) => [event.id, healthTransitionKind(event)]));
+  const tabCounts = events.reduce((totals, event) => { const kind = transitionKinds.get(event.id); totals[kind] = (totals[kind] || 0) + 1; return totals; }, {});
+  const transitionTabs = [
+    { key: "all", label: "All", count: events.length },
+    { key: "down", label: "Down", count: tabCounts.down || 0 },
+    { key: "degraded", label: "Degraded", count: tabCounts.degraded || 0 },
+    { key: "recovered", label: "Recovered", count: tabCounts.recovered || 0 },
+  ];
+  const checkNames = [...new Set(events.map((event) => event.check_name))].sort((a, b) => labelFor(a).localeCompare(labelFor(b)));
+  const filteredEvents = events.filter((event) => (transitionFilter === "all" || transitionKinds.get(event.id) === transitionFilter) && (!checkFilter || event.check_name === checkFilter));
+  // How long the state introduced by each event held, from the next event for
+  // the same check. The newest event is still running, so the page shows its
+  // age instead of pretending it is finished.
+  const eventDurations = useMemo(() => {
+    const ascending = [...events].reverse();
+    const durations = new Map();
+    ascending.forEach((event, index) => {
+      const next = ascending.slice(index + 1).find((candidate) => candidate.check_name === event.check_name);
+      durations.set(event.id, next ? (new Date(next.created_at).getTime() - new Date(event.created_at).getTime()) / 1000 : null);
+    });
+    return durations;
+  }, [events]);
   return <div className="mx-auto max-w-[1460px] p-5 lg:p-8">
-    <AdminPageHeader title="System health" description="Every dependency Chmaba sells through, probed on a schedule. A sustained failure pages the operations chat." actions={<><Button variant="outline" size="sm" onClick={() => load(true)} disabled={loading}>Refresh</Button><Button size="sm" onClick={runNow} disabled={running}>{running ? "Checking..." : "Run checks now"}</Button></>} />
+    <AdminPageHeader title="System health" description="Every dependency Chmaba sells through, probed on a schedule. A sustained failure pages the operations chat. This page refreshes itself every 30 seconds." actions={<><Button variant="outline" size="sm" onClick={() => load(true)} disabled={loading}>Refresh</Button><Button size="sm" onClick={runNow} disabled={running}>{running ? "Checking..." : "Run checks now"}</Button></>} />
     {error && <p className="mt-5 rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b]">{error}</p>}
-    <div className="mt-6 flex flex-wrap items-center gap-3 rounded-2xl border border-[#e9e9ef] bg-white p-4">
-      <Badge tone={overallTone} dot>{overallLabel}</Badge>
-      <span className="text-xs text-[#777883]">{counts.ok || 0} healthy · {counts.degraded || 0} degraded · {counts.down || 0} down · {counts.skipped || 0} not configured</span>
-      <span className="text-xs text-[#a0a1aa]">{data?.last_checked_at ? `Last sweep ${new Date(data.last_checked_at).toLocaleString()}` : "No sweep recorded yet"}</span>
-    </div>
     {data?.stale && <p className="mt-3 rounded-xl border border-[#f4e3b8] bg-[#fffaf0] px-3 py-2.5 text-xs text-[#8a6a1f]">The sweep worker has not reported for a while. Check that the API is running with HEALTH_CHECK_WORKER_ENABLED set.</p>}
-    {loading ? <p className="mt-6 text-sm text-[#92939d]">Loading platform health...</p> : <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-      {checks.map((check) => <div key={check.name} className="rounded-2xl border border-[#e9e9ef] bg-white p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="truncate text-xs font-extrabold">{check.label}</p>
-            <p className="mt-0.5 text-[10px] uppercase tracking-[.1em] text-[#a0a1aa]">{check.category} · {check.severity}</p>
-          </div>
-          <Badge tone={toneFor(check.status)} dot>{check.status}</Badge>
-        </div>
-        <p className="mt-3 text-[11px] font-semibold text-[#4d4e57]">{check.summary}</p>
-        {check.detail && <p className="mt-1 text-[10px] leading-4 text-[#92939d]">{check.detail}</p>}
-        <p className="mt-3 text-[10px] text-[#a0a1aa]">{check.latency_ms == null ? "" : `${check.latency_ms} ms · `}{check.consecutive_failures > 0 ? `${check.consecutive_failures} consecutive failure(s) · ` : ""}checked {new Date(check.checked_at).toLocaleTimeString()}</p>
-      </div>)}
-      {checks.length === 0 && <p className="text-xs text-[#92939d]">No sweep has run yet. Use "Run checks now".</p>}
-    </div>}
+
+    <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      {[
+        { key: "down", label: "Down", hint: "Blocking customers right now", tone: "red" },
+        { key: "degraded", label: "Degraded", hint: "Working, with a fault", tone: "yellow" },
+        { key: "ok", label: "Healthy", hint: "Last sweep passed", tone: "green" },
+        { key: "skipped", label: "Not configured", hint: "Off by design, not an outage", tone: "neutral" },
+      ].map((tile) => <button key={tile.key} type="button" aria-pressed={statusFilter === tile.key} onClick={() => setStatusFilter(statusFilter === tile.key ? "all" : tile.key)} className={`rounded-2xl border bg-white p-4 text-left transition ${statusFilter === tile.key ? "border-[#6957f5] shadow-[0_0_0_1px_#6957f5]" : "border-[#e9e9ef] hover:border-[#cfcedb]"}`}>
+        <Badge tone={tile.tone} dot>{tile.label}</Badge>
+        <p className={`mt-2 text-2xl font-extrabold tracking-[-.04em] ${(counts[tile.key] || 0) === 0 ? "text-[#c9c9d2]" : tile.key === "down" ? "text-[#c2564b]" : tile.key === "degraded" ? "text-[#ad7d1c]" : ""}`}>{counts[tile.key] || 0}</p>
+        <p className="mt-1 text-[11px] text-[#92939d]">{tile.hint}</p>
+      </button>)}
+    </div>
+
+    <div className={`mt-3 flex flex-col gap-2 rounded-2xl border px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between ${overallTone === "red" ? "border-[#f3c9c3] bg-[#fff7f5]" : overallTone === "yellow" ? "border-[#f0e0b8] bg-[#fffdf5]" : "border-[#e9e9ef] bg-white"}`}>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        <Badge tone={overallTone} dot>{overallLabel}</Badge>
+        <span className="text-xs text-[#777883]">{counts.ok || 0} healthy · {counts.degraded || 0} degraded · {counts.down || 0} down · {counts.skipped || 0} not configured{counts.unknown ? ` · ${counts.unknown} unknown` : ""}</span>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[#92939d]">
+        <span title={data?.last_checked_at ? new Date(data.last_checked_at).toLocaleString() : undefined}>{data?.last_checked_at ? `Last sweep ${healthAgo(data.last_checked_at, now)}` : "No sweep recorded yet"}</span>
+        <span>{lastDay.length === 0 ? "No transitions in the last 24h" : `${lastDay.length} transition${lastDay.length === 1 ? "" : "s"} in the last 24h${busiest && busiest[1] > 1 ? ` · ${busiest[1]} on ${labelFor(busiest[0])}` : ""}`}</span>
+      </div>
+    </div>
+
+    {loading ? <p className="mt-6 text-sm text-[#92939d]">Loading platform health...</p> : categoryGroups.length === 0 ? <p className="mt-6 rounded-2xl border border-[#e9e9ef] bg-white px-4 py-8 text-center text-xs text-[#999aa4]">{checks.length === 0 ? 'No sweep has run yet. Use "Run checks now".' : "No dependency is in this state."}</p> : categoryGroups.map((group) => <section key={group.key} className="mt-6">
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+        <h3 className="text-[11px] font-extrabold uppercase tracking-[.12em] text-[#5b5c66]">{HEALTH_CATEGORY_LABELS[group.key] || group.key}</h3>
+        <span className="text-[11px] text-[#a0a1aa]">{group.checks.length} check{group.checks.length === 1 ? "" : "s"}{group.broken ? ` · ${group.broken} need${group.broken === 1 ? "s" : ""} attention` : ""}</span>
+      </div>
+      <div className="mt-2 grid items-start gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {group.checks.map((check) => {
+          const unhealthy = check.status === "down" || check.status === "degraded";
+          const fix = healthFix(check);
+          const stats = eventStats.get(check.name);
+          const downFor = unhealthy && check.changed_at ? Math.max(0, (now - new Date(check.changed_at).getTime()) / 1000) : null;
+          const latencyWidth = check.latency_ms == null ? 0 : Math.max(4, Math.round((check.latency_ms / maxLatency) * 100));
+          return <article key={check.name} className={`flex flex-col rounded-2xl border bg-white p-4 ${check.status === "down" ? "border-[#f3c9c3]" : check.status === "degraded" ? "border-[#f0e0b8]" : "border-[#e9e9ef]"}`}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="truncate text-xs font-extrabold">{check.label}</p>
+                <p className="mt-0.5 text-[10px] uppercase tracking-[.1em] text-[#a0a1aa]">{check.severity} check</p>
+              </div>
+              <Badge tone={healthTone(check.status)} dot>{check.status}</Badge>
+            </div>
+            <p className="mt-3 text-[11px] font-semibold text-[#4d4e57]">{check.summary}</p>
+            {check.detail && <p className="mt-1 line-clamp-2 text-[10px] leading-4 text-[#92939d]" title={check.detail}>{check.detail}</p>}
+            {check.latency_ms != null && <div className="mt-3">
+              <div className="flex items-center justify-between text-[10px] text-[#a0a1aa]"><span>Round trip</span><span className="font-semibold text-[#6c6d77]">{check.latency_ms} ms</span></div>
+              <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-[#f1f1f5]"><div className="h-full rounded-full" style={{ width: `${latencyWidth}%`, backgroundColor: HEALTH_DOT_COLORS[healthTone(check.status)] }} /></div>
+            </div>}
+            <div className="mt-auto flex flex-wrap items-center gap-x-2 gap-y-1 pt-3 text-[10px] text-[#a0a1aa]">
+              {downFor != null && <span className={`font-bold ${check.status === "down" ? "text-[#c2564b]" : "text-[#ad7d1c]"}`}>{check.status === "down" ? "Down" : "Degraded"} for {healthDuration(downFor)}</span>}
+              {check.consecutive_failures > 0 && <span>{check.consecutive_failures} failed sweep{check.consecutive_failures === 1 ? "" : "s"}</span>}
+              <span title={new Date(check.checked_at).toLocaleString()}>checked {healthAgo(check.checked_at, now)}</span>
+              {stats?.changes > 0 && <span title={`${stats.changes} transition(s) in the window below`}>{stats.changes} change{stats.changes === 1 ? "" : "s"}</span>}
+              {fix && <button type="button" onClick={() => onNavigate?.(fix.page)} className="font-bold text-[#6957f5] hover:underline">{fix.label} →</button>}
+            </div>
+          </article>;
+        })}
+      </div>
+    </section>)}
+
     <section className="mt-6 overflow-hidden rounded-2xl border border-[#e9e9ef] bg-white">
-      <div className="border-b border-[#f0f0f3] px-4 py-3"><p className="text-xs font-extrabold text-[#3d3e47]">Recent transitions</p><p className="mt-0.5 text-[11px] text-[#92939d]">Recorded only when a dependency changes state.</p></div>
-      {(data?.events || []).length === 0 ? <p className="px-4 py-8 text-center text-xs text-[#999aa4]">No transitions recorded yet.</p> : <table className="w-full border-collapse text-left text-xs">
-        <thead><tr className="border-b border-[#f0f0f3] text-[10px] font-bold uppercase tracking-[.08em] text-[#92939d]"><th className="px-4 py-2">When</th><th className="px-4 py-2">Check</th><th className="px-4 py-2">Change</th><th className="px-4 py-2">Detail</th></tr></thead>
-        <tbody>{data.events.map((event) => <tr key={event.id} className="border-b border-[#f5f5f7] last:border-0">
-          <td className="px-4 py-2.5 text-[#777883]">{new Date(event.created_at).toLocaleString()}</td>
-          <td className="px-4 py-2.5 font-semibold text-[#3d3e47]">{labelFor(event.check_name)}</td>
-          <td className="px-4 py-2.5"><Badge tone={toneFor(event.status)}>{event.previous_status ? `${event.previous_status} → ${event.status}` : event.status}</Badge></td>
-          <td className="px-4 py-2.5 text-[#777883]">{event.summary || "-"}</td>
-        </tr>)}</tbody>
-      </table>}
+      <div className="border-b border-[#f0f0f3] px-4 py-3">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-xs font-extrabold text-[#3d3e47]">Recent transitions</p>
+            <p className="mt-0.5 text-[11px] text-[#92939d]">Recorded only when a dependency changes state. "Lasted" is how long that state held.</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap gap-1">
+              {transitionTabs.map((tab) => <button key={tab.key} type="button" aria-pressed={transitionFilter === tab.key} onClick={() => setTransitionFilter(tab.key)} className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold transition ${transitionFilter === tab.key ? "bg-[#6957f5] text-white" : "bg-[#f5f5f8] text-[#5b5c66] hover:bg-[#ececf2]"}`}>
+                {tab.label}
+                <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${transitionFilter === tab.key ? "bg-white/20" : "bg-white text-[#91929c]"}`}>{tab.count}</span>
+              </button>)}
+            </div>
+            <select aria-label="Filter transitions by dependency" value={checkFilter} onChange={(event) => setCheckFilter(event.target.value)} className="h-8 w-[190px] shrink-0 rounded-lg border border-[#e4e4eb] bg-white px-2 text-[11px] font-semibold text-[#4f5059]">
+              <option value="">Every dependency</option>
+              {checkNames.map((name) => <option key={name} value={name}>{labelFor(name)}</option>)}
+            </select>
+          </div>
+        </div>
+      </div>
+      {filteredEvents.length === 0 ? <p className="px-4 py-8 text-center text-xs text-[#999aa4]">{events.length === 0 ? "No transitions recorded yet." : "No transition matches this filter."}</p> : <div className="overflow-x-auto">
+        <table className="w-full min-w-[760px] border-collapse text-left text-xs">
+          <thead><tr className="border-b border-[#f0f0f3] text-[10px] font-bold uppercase tracking-[.08em] text-[#92939d]"><th className="px-4 py-2">When</th><th className="px-4 py-2">Dependency</th><th className="px-4 py-2">Change</th><th className="px-4 py-2">Lasted</th><th className="px-4 py-2">Detail</th></tr></thead>
+          <tbody>{filteredEvents.map((event) => {
+            const duration = eventDurations.get(event.id);
+            const ongoing = duration == null;
+            const shown = ongoing ? Math.max(0, (now - new Date(event.created_at).getTime()) / 1000) : duration;
+            return <tr key={event.id} className="border-b border-[#f5f5f7] last:border-0">
+              <td className="whitespace-nowrap px-4 py-2.5 text-[#777883]" title={new Date(event.created_at).toLocaleString()}>{healthAgo(event.created_at, now)}</td>
+              <td className="px-4 py-2.5 font-semibold text-[#3d3e47]">{labelFor(event.check_name)}</td>
+              <td className="whitespace-nowrap px-4 py-2.5"><Badge tone={healthTone(event.status)} dot>{event.previous_status ? `${event.previous_status} → ${event.status}` : event.status}</Badge></td>
+              <td className="whitespace-nowrap px-4 py-2.5 text-[#777883]">{ongoing ? `for ${healthDuration(shown)}` : healthDuration(shown)}</td>
+              <td className="px-4 py-2.5 text-[#777883]">{event.summary || "-"}</td>
+            </tr>;
+          })}</tbody>
+        </table>
+      </div>}
+      <div className="border-t border-[#f0f0f3] px-4 py-2 text-[10px] text-[#a0a1aa]">Showing {filteredEvents.length} of {events.length} recorded transition{events.length === 1 ? "" : "s"}.</div>
     </section>
   </div>;
 }
 
 function PlatformAdmin({ token, user, onSignOut, notify, initialPage = "overview", onNavigate }) {  const [active, setActive] = useState(initialPage);  const [mobileOpen, setMobileOpen] = useState(false);  const [overview, setOverview] = useState(null);  const [users, setUsers] = useState([]);  const [companies, setCompanies] = useState([]);  const [stores, setStores] = useState([]);  const [subscriptions, setSubscriptions] = useState([]);  const [plans, setPlans] = useState([]);
   const [planFeatureCatalog, setPlanFeatureCatalog] = useState([]);  const [activities, setActivities] = useState([]);  const [attention, setAttention] = useState(null);  const [health, setHealth] = useState(null);  const [loading, setLoading] = useState(true);  const [error, setError] = useState("");  const load = async () => {    setLoading(true);    setError("");    try {      const [overviewRow, usersRows, companyRows, storeRows, subscriptionRows, planRows, activityRows, attentionRow, healthRow, featureRows] = await Promise.all([        api.adminOverview(token),        api.adminUsers(token),        api.adminCompanies(token),        api.adminStores(token),        api.adminSubscriptions(token),        api.adminPlans(token),        api.adminActivity(token, { limit: 100 }),
-        api.adminAttention(token),        api.adminSystemHealth(token).catch(() => null),        api.planFeatures().catch(() => []),      ]);      setOverview(overviewRow);      setUsers(usersRows);      setCompanies(companyRows);      setStores(storeRows);      setSubscriptions(subscriptionRows);      setPlans(planRows);      setPlanFeatureCatalog(featureRows || []);      setActivities(activityRows);      setAttention(attentionRow);      setHealth(healthRow);    } catch (requestError) {      setError(requestError.message || "Could not load admin data");    } finally {      setLoading(false);    }  };  useEffect(() => { load(); }, [token]);  const navigate = (page) => { setActive(page); onNavigate?.(page); };const updateUser = async (id, body) => { try { await api.adminUpdateUser(token, id, body); notify("User updated"); await load(); } catch (requestError) { setError(requestError.message); } };const updateCompany = async (id, body) => { try { await api.adminUpdateCompany(token, id, body); notify("Company status updated"); await load(); } catch (requestError) { setError(requestError.message); } };const updateStore = async (id, body) => { try { await api.adminUpdateStore(token, id, body); notify("Store status updated"); await load(); } catch (requestError) { setError(requestError.message); } };const savePlan = async (request) => { try { if (request.create) { await api.adminCreatePlan(token, request); notify("Plan created"); } else { await api.adminUpdatePlan(token, request.code, request); notify("Plan updated"); } await load(); } catch (requestError) { setError(requestError.message || "Could not save plan"); throw requestError; } };const content = { overview: <AdminOverview overview={overview} companies={companies} activities={activities} attention={attention} health={health} onNavigate={navigate} loading={loading} />, funnel: <AdminFunnel token={token} />, analytics: <AdminSalesAnalytics token={token} />, retention: <AdminRetention token={token} />, attention: <AdminAttention token={token} onNavigate={navigate} />, health: <AdminSystemHealth token={token} notify={notify} />, search: <AdminSearch token={token} onNavigate={navigate} />, users: <AdminUsers users={users} onUpdate={updateUser} loading={loading} token={token} canManage={user?.platform_role === "super_admin"} />, contacts: <AdminContacts token={token} notify={notify} onNavigate={navigate} />, companies: <AdminCompanies companies={companies} onUpdate={updateCompany} loading={loading} token={token} />, stores: <AdminStores stores={stores} onUpdate={updateStore} loading={loading} />, subscriptions: <AdminSubscriptions subscriptions={subscriptions} plans={plans} token={token} notify={notify} loading={loading} onRefresh={load} canManage={user?.platform_role === "super_admin"} />, "billing-payments": <AdminBillingPayments token={token} />, plans: <AdminPlans plans={plans} featureCatalog={planFeatureCatalog} onSave={savePlan} loading={loading} canManage={user?.platform_role === "super_admin"} />, payments: <AdminPayments token={token} notify={notify} user={user} />, mailing: <AdminMailing token={token} user={user} notify={notify} onNavigate={navigate} />, settings: <AdminSettings token={token} user={user} notify={notify} />, audit: <AdminAudit token={token} />, support: <AdminSupportInsights token={token} notify={notify} />, help: <AdminHelpContent token={token} notify={notify} />, guides: <AdminGuides token={token} notify={notify} /> }[active] || <AdminOverview overview={overview} companies={companies} activities={activities} attention={attention} health={health} onNavigate={navigate} loading={loading} />;  return <div className="min-h-screen bg-[#fafafd] text-[#202128]"><AdminSidebar active={active} onNavigate={navigate} onSignOut={onSignOut} user={user} /><AdminMobileMenu active={active} open={mobileOpen} onClose={() => setMobileOpen(false)} onNavigate={navigate} /><div className="lg:pl-[252px]"><AdminHeader active={active} onMenu={() => setMobileOpen(true)} onSignOut={onSignOut} user={user} /><main>{error && <div className="mx-auto max-w-[1460px] px-5 pt-5 lg:px-8"><p className="rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b]">{error}</p></div>}{content}</main></div></div>;}
+        api.adminAttention(token),        api.adminSystemHealth(token).catch(() => null),        api.planFeatures().catch(() => []),      ]);      setOverview(overviewRow);      setUsers(usersRows);      setCompanies(companyRows);      setStores(storeRows);      setSubscriptions(subscriptionRows);      setPlans(planRows);      setPlanFeatureCatalog(featureRows || []);      setActivities(activityRows);      setAttention(attentionRow);      setHealth(healthRow);    } catch (requestError) {      setError(requestError.message || "Could not load admin data");    } finally {      setLoading(false);    }  };  useEffect(() => { load(); }, [token]);  const navigate = (page) => { setActive(page); onNavigate?.(page); };const updateUser = async (id, body) => { try { await api.adminUpdateUser(token, id, body); notify("User updated"); await load(); } catch (requestError) { setError(requestError.message); } };const updateCompany = async (id, body) => { try { await api.adminUpdateCompany(token, id, body); notify("Company status updated"); await load(); } catch (requestError) { setError(requestError.message); } };const updateStore = async (id, body) => { try { await api.adminUpdateStore(token, id, body); notify("Store status updated"); await load(); } catch (requestError) { setError(requestError.message); } };const savePlan = async (request) => { try { if (request.create) { await api.adminCreatePlan(token, request); notify("Plan created"); } else { await api.adminUpdatePlan(token, request.code, request); notify("Plan updated"); } await load(); } catch (requestError) { setError(requestError.message || "Could not save plan"); throw requestError; } };const content = { overview: <AdminOverview overview={overview} companies={companies} activities={activities} attention={attention} health={health} onNavigate={navigate} loading={loading} />, funnel: <AdminFunnel token={token} />, analytics: <AdminSalesAnalytics token={token} />, retention: <AdminRetention token={token} />, attention: <AdminAttention token={token} onNavigate={navigate} />, health: <AdminSystemHealth token={token} notify={notify} onNavigate={navigate} />, search: <AdminSearch token={token} onNavigate={navigate} />, users: <AdminUsers users={users} onUpdate={updateUser} loading={loading} token={token} canManage={user?.platform_role === "super_admin"} />, contacts: <AdminContacts token={token} notify={notify} onNavigate={navigate} />, companies: <AdminCompanies companies={companies} onUpdate={updateCompany} loading={loading} token={token} />, stores: <AdminStores stores={stores} onUpdate={updateStore} loading={loading} />, subscriptions: <AdminSubscriptions subscriptions={subscriptions} plans={plans} token={token} notify={notify} loading={loading} onRefresh={load} canManage={user?.platform_role === "super_admin"} />, "billing-payments": <AdminBillingPayments token={token} />, plans: <AdminPlans plans={plans} featureCatalog={planFeatureCatalog} onSave={savePlan} loading={loading} canManage={user?.platform_role === "super_admin"} />, payments: <AdminPayments token={token} notify={notify} user={user} />, mailing: <AdminMailing token={token} user={user} notify={notify} onNavigate={navigate} />, settings: <AdminSettings token={token} user={user} notify={notify} />, audit: <AdminAudit token={token} />, support: <AdminSupportInsights token={token} notify={notify} />, help: <AdminHelpContent token={token} notify={notify} />, guides: <AdminGuides token={token} notify={notify} /> }[active] || <AdminOverview overview={overview} companies={companies} activities={activities} attention={attention} health={health} onNavigate={navigate} loading={loading} />;  return <div className="min-h-screen bg-[#fafafd] text-[#202128]"><AdminSidebar active={active} onNavigate={navigate} onSignOut={onSignOut} user={user} /><AdminMobileMenu active={active} open={mobileOpen} onClose={() => setMobileOpen(false)} onNavigate={navigate} /><div className="lg:pl-[252px]"><AdminHeader active={active} onMenu={() => setMobileOpen(true)} onSignOut={onSignOut} user={user} /><main>{error && <div className="mx-auto max-w-[1460px] px-5 pt-5 lg:px-8"><p className="rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b]">{error}</p></div>}{content}</main></div></div>;}
 
 export { ThemeProvider, ThemeToggle };
 export default PlatformAdmin;

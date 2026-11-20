@@ -37,6 +37,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.models import Company, Store, SystemHealthCheck, SystemHealthEvent, utcnow
+from app.services.ai import load_ai_settings, resolve_provider as resolve_ai_provider
 from app.services.mail import load_mail_settings, resolve_provider
 from app.services.payments.base import PaymentProviderError
 from app.services.payments.chamabapay import ChmabaPayClient
@@ -57,6 +58,29 @@ SEVERITY_ORDER = {"critical": 0, "warning": 1, "info": 2}
 
 RESEND_DOMAINS_ENDPOINT = "https://api.resend.com/domains"
 TELEGRAM_API_BASE = "https://api.telegram.org"
+# A getMe call is tiny; if it has not answered in a few seconds the network, not
+# the bot, is the problem. Two short attempts fit inside the sweep's own ceiling
+# and stop one stalled DNS lookup or TLS handshake from painting the board red.
+TELEGRAM_PROBE_ATTEMPTS = 2
+# The admin page filters its transition table by state and by check, so it asks
+# for more history than the handful of rows an alert formatter needs.
+ADMIN_EVENT_WINDOW = 200
+
+
+def _probe_timeout(*, read: float | None = None) -> httpx.Timeout:
+    """A per-probe timeout that leaves room for the probe to report its own error.
+
+    ``_run_probe`` caps every probe at ``HEALTH_CHECK_TIMEOUT_SECONDS``. When a
+    probe's own timeout is the same value, the outer cap usually wins the race
+    and the board only ever reads "Timed out after 12s" - the operator loses
+    whether DNS, TCP or the response stalled, and every transient blip looks
+    identical. Finishing a couple of seconds earlier lets the probe name what
+    actually failed.
+    """
+    ceiling = max(4.0, float(settings.health_check_timeout_seconds))
+    connect = max(3.0, min(5.0, ceiling / 3))
+    return httpx.Timeout(connect=connect, read=read if read is not None else ceiling - 2, write=connect, pool=connect)
+
 
 # Recent KHQR attempts, kept in memory. The point is to notice a burst within
 # the current process ("cashiers are failing right now"), not to keep an audit
@@ -310,7 +334,7 @@ async def _probe_email(db: AsyncSession) -> CheckResult:
         if not api_key:
             return CheckResult(STATUS_DOWN, "Resend is selected but no API key is configured", "Every signup, receipt and reminder email will fail.")
         try:
-            async with httpx.AsyncClient(timeout=settings.health_check_timeout_seconds) as client:
+            async with httpx.AsyncClient(timeout=_probe_timeout()) as client:
                 response = await client.get(RESEND_DOMAINS_ENDPOINT, headers={"Authorization": f"Bearer {api_key}"})
         except httpx.HTTPError as exc:
             return CheckResult(STATUS_DOWN, f"Cannot reach Resend: {exc.__class__.__name__}", "Outbound email is not leaving the platform.")
@@ -368,10 +392,13 @@ async def _probe_http(label: str, url: str, *, path: str = "") -> CheckResult:
     target = f"{url.rstrip('/')}{path}"
     started = time.perf_counter()
     try:
-        async with httpx.AsyncClient(timeout=settings.health_check_timeout_seconds, follow_redirects=True) as client:
+        async with httpx.AsyncClient(timeout=_probe_timeout(), follow_redirects=True) as client:
             response = await client.get(target)
     except httpx.HTTPError as exc:
-        return CheckResult(STATUS_DOWN, f"{label} is unreachable", f"{exc.__class__.__name__} requesting {target}")
+        detail = f"{exc.__class__.__name__} requesting {target}"
+        if isinstance(exc, httpx.TimeoutException):
+            detail = f"{exc.__class__.__name__} - the host did not answer in time ({target})"
+        return CheckResult(STATUS_DOWN, f"{label} is unreachable", detail)
     latency = int((time.perf_counter() - started) * 1000)
     if response.status_code >= 500:
         return CheckResult(STATUS_DOWN, f"{label} answered {response.status_code}", f"{target} is failing requests.", latency)
@@ -399,23 +426,74 @@ async def _probe_telegram(db: AsyncSession) -> CheckResult:
     token = (settings.telegram_bot_token or "").strip()
     if not settings.telegram_enabled or not token:
         return CheckResult(STATUS_SKIPPED, "Telegram alerts are not configured")
-    try:
-        async with httpx.AsyncClient(timeout=settings.health_check_timeout_seconds) as client:
-            response = await client.get(f"{TELEGRAM_API_BASE}/bot{token}/getMe")
-    except httpx.HTTPError as exc:
-        return CheckResult(STATUS_DEGRADED, "Cannot reach the Telegram API", exc.__class__.__name__)
-    if response.status_code != 200:
-        return CheckResult(STATUS_DEGRADED, "Telegram rejected the bot token", f"getMe answered {response.status_code}.")
-    return CheckResult(STATUS_OK, "Bot token accepted")
+    # Two short attempts. api.telegram.org occasionally stalls on connect - a cold
+    # DNS lookup, a dropped TLS handshake, a throttled route - and that used to
+    # consume the whole 12s probe ceiling: the sweep recorded a bare
+    # "Timed out after 12s", the next sweep recovered, and the transition log
+    # filled with "down for 12s" flaps that never paged anyone. A retry inside a
+    # 4s budget absorbs the blip; a real outage still reports itself, now with
+    # the phase that failed instead of a generic ceiling timeout.
+    budget = max(2, min(4, settings.health_check_timeout_seconds // 3))
+    timeout = httpx.Timeout(connect=budget, read=budget, write=budget, pool=budget)
+    started = time.perf_counter()
+    failures: list[str] = []
+    for attempt in range(TELEGRAM_PROBE_ATTEMPTS):
+        if attempt:
+            await asyncio.sleep(0.5)
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                response = await client.get(f"{TELEGRAM_API_BASE}/bot{token}/getMe")
+        except httpx.TimeoutException as exc:
+            failures.append(f"{exc.__class__.__name__} after {budget}s")
+            continue
+        except httpx.HTTPError as exc:
+            failures.append(f"{exc.__class__.__name__}: {exc}"[:200])
+            continue
+        latency = int((time.perf_counter() - started) * 1000)
+        if response.status_code != 200:
+            return CheckResult(
+                STATUS_DEGRADED,
+                "Telegram rejected the bot token",
+                f"getMe answered {response.status_code}.",
+                latency,
+            )
+        return CheckResult(STATUS_OK, "Bot token accepted", None, latency)
+    spent = int((time.perf_counter() - started) * 1000)
+    return CheckResult(
+        STATUS_DEGRADED,
+        "Cannot reach the Telegram API",
+        f"{TELEGRAM_PROBE_ATTEMPTS} attempts failed: {'; '.join(failures)}"[:400],
+        spent,
+    )
 
 
 async def _probe_ai(db: AsyncSession) -> CheckResult:
-    del db
-    if not (settings.ai_provider or "").strip():
+    """Is an AI provider configured with a usable key?
+
+    Settings live in ``platform_settings`` (Admin -> Settings -> AI) with the env
+    vars as a fallback. Reading ``settings`` alone made this check report
+    "skipped" on every deployment that configured AI from the admin panel - the
+    check was answering a question nobody had asked. The provider is never
+    called: proving a paid key works would cost money on every sweep.
+    """
+    cfg = await load_ai_settings(db)
+    provider, model = resolve_ai_provider(cfg)
+    if provider is None:
+        configured = (cfg.get("ai_provider") or "").strip()
+        if configured:
+            return CheckResult(
+                STATUS_DEGRADED,
+                f"Unknown AI provider '{configured}'",
+                "Pick ChatGPT, DeepSeek or Claude in Admin -> Settings -> AI.",
+            )
         return CheckResult(STATUS_SKIPPED, "No AI provider is configured")
-    if not (settings.ai_api_key or "").strip():
-        return CheckResult(STATUS_DEGRADED, "AI provider is selected but no API key is set", "AI drafting and the support assistant will fail.")
-    return CheckResult(STATUS_OK, f"{settings.ai_provider} configured")
+    if not (cfg.get("ai_api_key") or "").strip():
+        return CheckResult(
+            STATUS_DEGRADED,
+            f"{provider.label} is selected but no API key is set",
+            "AI drafting and the support assistant will fail until a key is saved in Admin -> Settings -> AI.",
+        )
+    return CheckResult(STATUS_OK, f"{provider.label} configured ({model})")
 
 
 CHECKS: tuple[Check, ...] = (
@@ -652,13 +730,14 @@ def _format_recovery_message(items: list[_AlertItem], now: datetime) -> str:
     return "\n".join(lines) + _alert_footer()
 
 
-async def run_checks(db: AsyncSession, *, trigger: str = "schedule", alert: bool = True) -> dict:
+async def run_checks(db: AsyncSession, *, trigger: str = "schedule", alert: bool = True, events: int = 25) -> dict:
     """Run every probe, record the result and page on a sustained failure.
 
     ``trigger`` is ``schedule`` (the in-process worker), ``manual`` (the admin
     "Run now" button) or ``startup``. Only a scheduled sweep in production
     alerts, so an operator refreshing the page never triggers a page and a
-    developer's local instance cannot page the real operations chat.
+    developer's local instance cannot page the real operations chat. ``events``
+    controls how much transition history the returned snapshot carries.
     """
     existing = {row.name: row for row in (await db.execute(select(SystemHealthCheck))).scalars().all()}
     now = utcnow()
@@ -768,7 +847,7 @@ async def run_checks(db: AsyncSession, *, trigger: str = "schedule", alert: bool
     if to_announce_recovery:
         await send_telegram_message(_format_recovery_message(to_announce_recovery, now))
 
-    return await snapshot(db)
+    return await snapshot(db, events=events)
 
 
 PAYMENT_SMOKE_CHECK = "khqr_smoke"
