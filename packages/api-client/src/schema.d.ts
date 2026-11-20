@@ -6533,6 +6533,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/telemetry/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ingest Telemetry
+         * @description Accept a batch of client events.
+         *
+         *     Returns 202 with how many events were stored and how many were dropped. A
+         *     dropped event is almost always a client sending a name that is not in the
+         *     registry, which the health page surfaces as registry drift.
+         */
+        post: operations["ingest_telemetry_api_v1_telemetry_events_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/": {
         parameters: {
             query?: never;
@@ -16421,6 +16445,98 @@ export interface components {
             status: "open" | "pending" | "resolved" | "closed";
             /** Resolution Note */
             resolution_note?: string | null;
+        };
+        /** TelemetryBatchIn */
+        TelemetryBatchIn: {
+            /**
+             * Source
+             * @default web
+             * @enum {string}
+             */
+            source: "web" | "storefront" | "android" | "ios";
+            /** App Version */
+            app_version?: string | null;
+            /** Sent At */
+            sent_at?: string | null;
+            session: components["schemas"]["TelemetrySessionIn"];
+            /** Events */
+            events?: components["schemas"]["TelemetryEventIn"][];
+        };
+        /** TelemetryBatchRead */
+        TelemetryBatchRead: {
+            /** Accepted */
+            accepted: number;
+            /** Dropped */
+            dropped: number;
+        };
+        /** TelemetryEventIn */
+        TelemetryEventIn: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Name */
+            name: string;
+            /** Occurred At */
+            occurred_at?: string | null;
+            /** Route */
+            route?: string | null;
+            /** Route Key */
+            route_key?: string | null;
+            /** Element Key */
+            element_key?: string | null;
+            /** Duration Ms */
+            duration_ms?: number | null;
+            /** Props */
+            props?: {
+                [key: string]: unknown;
+            };
+        };
+        /** TelemetrySessionIn */
+        TelemetrySessionIn: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Anonymous Id
+             * Format: uuid
+             */
+            anonymous_id: string;
+            /** Started At */
+            started_at?: string | null;
+            /** Entry Route */
+            entry_route?: string | null;
+            /** Referrer Host */
+            referrer_host?: string | null;
+            utm?: components["schemas"]["TelemetryUtmIn"] | null;
+            /** Platform */
+            platform?: string | null;
+            /** Os */
+            os?: string | null;
+            /** Browser */
+            browser?: string | null;
+            /** Device Type */
+            device_type?: string | null;
+            /** Locale */
+            locale?: string | null;
+            /** Timezone */
+            timezone?: string | null;
+        };
+        /** TelemetryUtmIn */
+        TelemetryUtmIn: {
+            /** Source */
+            source?: string | null;
+            /** Medium */
+            medium?: string | null;
+            /** Campaign */
+            campaign?: string | null;
+            /** Content */
+            content?: string | null;
+            /** Term */
+            term?: string | null;
         };
         /** TokenResponse */
         TokenResponse: {
@@ -29649,6 +29765,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["QzSignRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ingest_telemetry_api_v1_telemetry_events_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TelemetryBatchIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TelemetryBatchRead"];
                 };
             };
             /** @description Validation Error */
