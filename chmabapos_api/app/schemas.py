@@ -3457,6 +3457,42 @@ class AdminJourneyTimelineRead(APIModel):
     events: list[AdminJourneyTimelineEventRead] = Field(default_factory=list)
 
 
+class AdminJourneyDigestRead(APIModel):
+    """One stored AI digest, with the evidence it cited and the human decision.
+
+    ``validator`` is the trust label the UI shows: ``fallback`` means the model
+    was unavailable or unsupported, so the text came from deterministic rules.
+    """
+
+    id: UUID
+    created_at: datetime
+    kind: str = "digest"
+    window_days: int
+    stage_key: str | None = None
+    title: str
+    summary: str
+    severity: str = "low"
+    confidence: float | None = None
+    evidence: list[dict[str, Any]] = Field(default_factory=list)
+    payload: dict[str, Any] = Field(default_factory=dict)
+    prompt_version: str
+    provider: str | None = None
+    model: str | None = None
+    input_hash: str
+    validator: str
+    decision: Literal["accepted", "rejected"] | None = None
+    decided_by: UUID | None = None
+    decided_at: datetime | None = None
+    decision_note: str | None = None
+
+
+class AdminJourneyDigestDecisionRequest(APIModel):
+    """A human verdict on a digest. The note is optional but stored verbatim."""
+
+    decision: Literal["accepted", "rejected"]
+    note: str | None = Field(default=None, max_length=500)
+
+
 class AdminSalesSummaryRead(APIModel):
     orders_total: int = 0
     orders_window: int = 0
