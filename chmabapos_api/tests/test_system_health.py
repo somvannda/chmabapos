@@ -13,7 +13,7 @@ from sqlalchemy import select, text
 from app.config import settings
 from app.db import SessionLocal
 from app.main import app
-from app.models import SystemHealthCheck, SystemHealthEvent
+from app.models import PlatformSetting, SystemHealthCheck, SystemHealthEvent
 from app.services import health as health_service
 from app.services.payments.base import PaymentProviderError
 
@@ -724,4 +724,102 @@ async def test_payment_smoke_failure_pages_and_feeds_the_khqr_signal(monkeypatch
         row = await db.get(SystemHealthCheck, health_service.PAYMENT_SMOKE_CHECK)
         assert row.status == health_service.STATUS_DOWN
         assert row.consecutive_failures == 1
+
+
+async def _clear_ai_settings() -> None:
+    await _set_ai_settings()
+
+
+async def _set_ai_settings(**values: str) -> None:
+    async with SessionLocal() as db:
+        await db.execute(
+            text("DELETE FROM platform_settings WHERE key IN ('ai_provider', 'ai_api_key', 'ai_model', 'ai_base_url')")
+        )
+        for key, value in values.items():
+            db.add(PlatformSetting(key=key, value=value))
+        await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_ai_probe_reads_the_admin_settings_not_only_the_env() -> None:
+    """The check reported "skipped" forever while AI was configured in the panel."""
+    await _clear_ai_settings()
+    try:
+        async with SessionLocal() as db:
+            missing = await health_service._probe_ai(db)
+        assert missing.status == health_service.STATUS_SKIPPED
+
+        await _set_ai_settings(ai_provider="openai")
+        async with SessionLocal() as db:
+            no_key = await health_service._probe_ai(db)
+        assert no_key.status == health_service.STATUS_DEGRADED
+        assert "no api key" in no_key.summary.lower()
+
+        await _set_ai_settings(ai_provider="openai", ai_api_key="sk-test")
+        async with SessionLocal() as db:
+            ready = await health_service._probe_ai(db)
+        assert ready.status == health_service.STATUS_OK
+        assert "gpt-4o-mini" in ready.summary
+
+        await _set_ai_settings(ai_provider="not-a-provider", ai_api_key="sk-test")
+        async with SessionLocal() as db:
+            unknown = await health_service._probe_ai(db)
+        assert unknown.status == health_service.STATUS_DEGRADED
+        assert "not-a-provider" in unknown.summary
+    finally:
+        await _clear_ai_settings()
+
+
+class _FlakyTelegramClient:
+    """Fails the first ``getMe`` attempt, answers 200 afterwards."""
+
+    calls = 0
+    failure: Exception | None = None
+
+    def __init__(self, **kwargs) -> None:  # noqa: ANN003
+        pass
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc) -> bool:  # noqa: ANN002
+        return False
+
+    async def get(self, url: str):  # noqa: ANN201
+        type(self).calls += 1
+        if self.failure is not None:
+            raise self.failure
+        if type(self).calls == 1:
+            raise health_service.httpx.ConnectTimeout("connect timed out")
+        return SimpleNamespace(status_code=200)
+
+
+@pytest.mark.asyncio
+async def test_telegram_probe_retries_and_names_the_failure(monkeypatch) -> None:
+    """One stalled connect must not be reported as a dependency outage."""
+    monkeypatch.setattr(settings, "telegram_bot_token", "123:abc")
+    monkeypatch.setattr(settings, "telegram_chat_id", "-100")
+    monkeypatch.setattr(health_service.httpx, "AsyncClient", _FlakyTelegramClient)
+    _FlakyTelegramClient.calls = 0
+    _FlakyTelegramClient.failure = None
+
+    first = await health_service._probe_telegram(None)  # type: ignore[arg-type]
+    assert first.status == health_service.STATUS_OK
+    assert _FlakyTelegramClient.calls == 2, "a timed-out attempt has to be retried"
+
+    _FlakyTelegramClient.failure = health_service.httpx.ConnectTimeout("connect timed out")
+    _FlakyTelegramClient.calls = 0
+    down = await health_service._probe_telegram(None)  # type: ignore[arg-type]
+    assert down.status == health_service.STATUS_DEGRADED
+    assert "Cannot reach the Telegram API" == down.summary
+    assert "ConnectTimeout" in (down.detail or "")
+    assert str(health_service.TELEGRAM_PROBE_ATTEMPTS) in (down.detail or "")
+
+
+def test_probe_timeouts_finish_before_the_sweep_ceiling() -> None:
+    """Otherwise the board can only say "Timed out after 12s", never why."""
+    timeout = health_service._probe_timeout()
+    ceiling = max(4, settings.health_check_timeout_seconds)
+    assert timeout.read < ceiling
+    assert timeout.connect < ceiling
 
