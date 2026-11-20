@@ -94,3 +94,28 @@ async def test_journey_funnel_is_monotonic_and_uses_one_cohort() -> None:
             assert stage["median_seconds"] is None or stage["median_seconds"] >= 0
     finally:
         await cleanup(email, company_id)
+
+
+async def test_journey_health_is_admin_only_and_reports_ingest() -> None:
+    email = f"journey-health-{uuid.uuid4().hex[:10]}@example.com"
+    company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            workspace, headers = await create_free_workspace(client, email)
+            company_id = workspace["company"]["id"]
+            denied = await client.get("/api/v1/admin/journeys/health", headers=headers)
+        assert denied.status_code == 403
+
+        await promote_to_admin(email)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            admin_headers = await login_headers(client, email)
+            response = await client.get("/api/v1/admin/journeys/health", headers=admin_headers, params={"hours": 24})
+        assert response.status_code == 200
+        data = response.json()
+        assert set(data) >= {"window_hours", "events", "sessions", "users", "last_event_at", "lag_seconds", "partitions"}
+        assert data["window_hours"] == 24
+        assert data["events"] >= 1
+        assert data["partitions"] >= 1
+        assert data["lag_seconds"] is None or data["lag_seconds"] >= 0
+    finally:
+        await cleanup(email, company_id)
