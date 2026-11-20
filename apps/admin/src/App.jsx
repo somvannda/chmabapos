@@ -5723,8 +5723,10 @@ function AdminJourneys({ token }) {
     <AdminPageHeader
       title="Activation journeys"
       description="One signup cohort, read forward from account creation to a repeat sale. Every stage counts the same workspaces."
-      actions={<select value={days} onChange={(event) => setDays(event.target.value)} className="h-10 rounded-xl border border-[#e4e4eb] bg-white px-3 text-xs font-semibold text-[#4f5059]">{[7, 30, 90, 365].map((value) => <option key={value} value={value}>Last {value} days</option>)}</select>}
     />
+    <div className="mt-5 flex justify-end">
+      <select value={days} onChange={(event) => setDays(event.target.value)} className="h-10 rounded-xl border border-[#e4e4eb] bg-white px-3 text-xs font-semibold text-[#4f5059]">{[7, 30, 90, 365].map((value) => <option key={value} value={value}>Last {value} days</option>)}</select>
+    </div>
     {error && <p className="mt-5 rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b]">{error}</p>}
     {loading ? <p className="mt-6 text-sm text-[#92939d]">Loading the cohort...</p> : data && <>
       <div className="mt-6 rounded-2xl border border-[#e9e9ef] bg-white p-5">
