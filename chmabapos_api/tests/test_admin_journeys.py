@@ -1,7 +1,12 @@
-"""Cohort activation funnel: one denominator, monotonic stages."""
+"""Cohort activation funnel: one denominator, monotonic stages.
+
+Also covers the stage drilldown: why a stage leaks (validation/network/click/dwell
+friction) and which sessions stopped there, including the ordered timeline.
+"""
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timedelta, timezone
 
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select, text
@@ -10,6 +15,7 @@ from app.db import SessionLocal
 from app.main import app
 from app.models import AnalyticsEvent
 from tests.test_admin_funnel import cleanup, create_free_workspace, login_headers, promote_to_admin
+from tests.test_telemetry import _batch, _event
 
 STAGE_KEYS = [
     "account_created",
@@ -180,3 +186,329 @@ async def test_journey_health_is_admin_only_and_reports_ingest() -> None:
         assert data["lag_seconds"] is None or data["lag_seconds"] >= 0
     finally:
         await cleanup(email, company_id)
+
+async def _purge_analytics(email: str, company_id: str | None) -> None:
+    """Remove telemetry rows before the tenant rows they point at disappear."""
+    async with SessionLocal() as db:
+        if company_id:
+            await db.execute(
+                text("DELETE FROM analytics_events WHERE company_id = :company_id"),
+                {"company_id": company_id},
+            )
+            await db.execute(
+                text("DELETE FROM analytics_sessions WHERE company_id = :company_id"),
+                {"company_id": company_id},
+            )
+        await db.execute(
+            text("DELETE FROM analytics_events WHERE user_id IN (SELECT id FROM users WHERE email = :email)"),
+            {"email": email},
+        )
+        await db.execute(
+            text("DELETE FROM analytics_sessions WHERE user_id IN (SELECT id FROM users WHERE email = :email)"),
+            {"email": email},
+        )
+        await db.commit()
+
+
+async def _new_workspace(client: AsyncClient, prefix: str) -> tuple[str, dict, dict]:
+    email = f"{prefix}-{uuid.uuid4().hex[:10]}@example.com"
+    workspace, headers = await create_free_workspace(client, email)
+    return email, workspace, headers
+
+
+async def _seed_session(client: AsyncClient, headers: dict, events: list[dict]) -> str:
+    session_id = str(uuid.uuid4())
+    response = await client.post(
+        "/api/v1/telemetry/events",
+        headers=headers,
+        json=_batch(session_id, events),
+    )
+    assert response.status_code == 202, response.text
+    assert response.json()["accepted"] == len(events), response.text
+    return session_id
+
+
+async def test_journey_diagnostics_require_platform_admin() -> None:
+    email = f"journey-diagnostics-denied-{uuid.uuid4().hex[:10]}@example.com"
+    company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            workspace, headers = await create_free_workspace(client, email)
+            company_id = workspace["company"]["id"]
+            for url in (
+                "/api/v1/admin/journeys/why?stage=account_created",
+                "/api/v1/admin/journeys/sessions?stage=account_created",
+                f"/api/v1/admin/journeys/sessions/{uuid.uuid4()}",
+            ):
+                denied = await client.get(url, headers=headers)
+                assert denied.status_code == 403, (url, denied.text)
+    finally:
+        await _purge_analytics(email, company_id)
+        await cleanup(email, company_id)
+
+
+async def test_journey_why_explains_stage_friction() -> None:
+    merchant_email = ""
+    merchant_company_id = None
+    operator_email = ""
+    operator_company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            merchant_email, merchant_workspace, merchant_headers = await _new_workspace(client, "journey-why")
+            merchant_company_id = merchant_workspace["company"]["id"]
+            await _seed_session(
+                client,
+                merchant_headers,
+                [
+                    _event("ui.form_validation_failed", {"form": "signup", "field": "email", "rule": "required"}, route_key="signup"),
+                    _event("ui.form_validation_failed", {"form": "signup", "field": "password", "rule": "min_length"}, route_key="signup"),
+                    _event("error.network", {"endpoint_key": "auth.register", "status": 500, "error_code": "server"}, route_key="signup"),
+                    _event("ui.dead_click", {"route_key": "signup"}, route_key="signup", element_key="signup.submit"),
+                    _event("ui.rage_click", {"route_key": "signup", "clicks": 4}, route_key="signup", element_key="signup.submit"),
+                    _event("page.left", {"dwell_ms": 4000, "scroll_pct": 40}, route_key="signup"),
+                    _event("page.left", {"dwell_ms": 8000, "scroll_pct": 90}, route_key="signup"),
+                ],
+            )
+
+            operator_email, operator_workspace, _ = await _new_workspace(client, "journey-why-operator")
+            operator_company_id = operator_workspace["company"]["id"]
+            await promote_to_admin(operator_email)
+            admin_headers = await login_headers(client, operator_email)
+
+            response = await client.get(
+                "/api/v1/admin/journeys/why",
+                headers=admin_headers,
+                params={"stage": "account_created", "days": 30},
+            )
+            unknown = await client.get(
+                "/api/v1/admin/journeys/why",
+                headers=admin_headers,
+                params={"stage": "not_a_stage"},
+            )
+
+        assert response.status_code == 200, response.text
+        data = response.json()
+        assert data["stage"] == "account_created"
+        assert data["window_days"] == 30
+        assert data["route_keys"] == ["signup", "login"]
+        assert set(data) >= {
+            "validation_failures",
+            "network_failures",
+            "dead_clicks",
+            "rage_clicks",
+            "dwell",
+            "sample_events",
+            "sample_sessions",
+        }
+
+        validation = {(row["form"], row["field"], row["rule"]): row["count"] for row in data["validation_failures"]}
+        assert validation[("signup", "email", "required")] >= 1
+        assert validation[("signup", "password", "min_length")] >= 1
+
+        network = {(row["route_key"], row["endpoint_key"], row["status"]) for row in data["network_failures"]}
+        assert ("signup", "auth.register", "500") in network
+
+        assert any(row["element_key"] == "signup.submit" and row["count"] >= 1 for row in data["dead_clicks"])
+        assert any(row["element_key"] == "signup.submit" and row["count"] >= 1 for row in data["rage_clicks"])
+
+        # Two page.left events: 4s and 8s. Median is exact; p90 interpolates.
+        assert data["dwell"]["samples"] >= 2
+        assert data["dwell"]["median_ms"] == 6000.0
+        assert data["dwell"]["p90_ms"] > data["dwell"]["median_ms"]
+        assert data["sample_events"] >= 7
+        assert data["sample_sessions"] >= 1
+
+        assert unknown.status_code == 400
+        detail = unknown.json()["detail"]
+        assert "Unknown stage" in detail
+        assert "account_created" in detail
+    finally:
+        if merchant_email:
+            await _purge_analytics(merchant_email, merchant_company_id)
+            await cleanup(merchant_email, merchant_company_id)
+        if operator_email:
+            await _purge_analytics(operator_email, operator_company_id)
+            await cleanup(operator_email, operator_company_id)
+
+
+async def test_journey_sessions_list_stalled_and_hide_internal() -> None:
+    merchant_email = ""
+    merchant_company_id = None
+    operator_email = ""
+    operator_company_id = None
+    staff_email = ""
+    staff_session_id = ""
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            merchant_email, merchant_workspace, merchant_headers = await _new_workspace(client, "journey-stop")
+            merchant_company_id = merchant_workspace["company"]["id"]
+            merchant_session_id = await _seed_session(
+                client,
+                merchant_headers,
+                [
+                    _event("page.viewed", {"title_key": "signup.title"}, route_key="signup"),
+                    _event("page.left", {"dwell_ms": 30000}, route_key="signup"),
+                ],
+            )
+
+            # A staff account is flagged internal at ingest, so it must never
+            # appear in a stage's stalled list or open as a timeline.
+            staff_email, _, staff_headers = await _new_workspace(client, "journey-stop-staff")
+            await promote_to_admin(staff_email)
+            staff_headers = await login_headers(client, staff_email)
+            staff_session_id = await _seed_session(
+                client,
+                staff_headers,
+                [_event("page.viewed", {"title_key": "signup.title"}, route_key="signup")],
+            )
+
+            operator_email, operator_workspace, _ = await _new_workspace(client, "journey-stop-operator")
+            operator_company_id = operator_workspace["company"]["id"]
+            await promote_to_admin(operator_email)
+            admin_headers = await login_headers(client, operator_email)
+
+            response = await client.get(
+                "/api/v1/admin/journeys/sessions",
+                headers=admin_headers,
+                params={"stage": "account_created", "days": 30, "limit": 50},
+            )
+            limited = await client.get(
+                "/api/v1/admin/journeys/sessions",
+                headers=admin_headers,
+                params={"stage": "account_created", "days": 30, "limit": 1},
+            )
+            staff_timeline = await client.get(
+                f"/api/v1/admin/journeys/sessions/{staff_session_id}",
+                headers=admin_headers,
+            )
+
+        assert response.status_code == 200, response.text
+        data = response.json()
+        assert data["stage"] == "account_created"
+        assert data["window_days"] == 30
+        assert data["route_keys"] == ["signup", "login"]
+        assert data["limit"] == 50
+
+        rows = {row["id"]: row for row in data["sessions"]}
+        assert merchant_session_id in rows
+        assert staff_session_id not in rows
+
+        row = rows[merchant_session_id]
+        assert set(row) == {
+            "id",
+            "user_id",
+            "company_id",
+            "started_at",
+            "last_seen_at",
+            "exit_route",
+            "device_type",
+            "browser",
+            "locale",
+            "source",
+            "events",
+        }
+        assert row["company_id"] == merchant_company_id
+        assert row["source"] == "web"
+        assert row["device_type"] == "desktop"
+        assert row["browser"] == "Chrome"
+        assert row["locale"] == "en"
+        assert row["events"] >= 2
+        # The listing never leaks a fingerprint.
+        assert "anonymous_id" not in row
+
+        assert limited.status_code == 200
+        assert limited.json()["limit"] == 1
+        assert len(limited.json()["sessions"]) <= 1
+
+        assert staff_timeline.status_code == 404
+    finally:
+        for email, company_id in (
+            (merchant_email, merchant_company_id),
+            (operator_email, operator_company_id),
+            (staff_email, None),
+        ):
+            if email:
+                await _purge_analytics(email, company_id)
+                await cleanup(email, company_id)
+
+
+async def test_journey_session_timeline_is_ordered_and_unknown_is_404() -> None:
+    merchant_email = ""
+    merchant_company_id = None
+    operator_email = ""
+    operator_company_id = None
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            merchant_email, merchant_workspace, merchant_headers = await _new_workspace(client, "journey-timeline")
+            merchant_company_id = merchant_workspace["company"]["id"]
+            base = datetime.now(timezone.utc) - timedelta(minutes=10)
+            session_id = await _seed_session(
+                client,
+                merchant_headers,
+                [
+                    _event(
+                        "page.viewed",
+                        {"title_key": "signup.title"},
+                        occurred_at=base.isoformat(),
+                        route_key="signup",
+                    ),
+                    _event(
+                        "ui.form_validation_failed",
+                        {"form": "signup", "field": "email", "rule": "required"},
+                        occurred_at=(base + timedelta(minutes=2)).isoformat(),
+                        route_key="signup",
+                    ),
+                    _event(
+                        "page.left",
+                        {"dwell_ms": 12000, "scroll_pct": 55},
+                        occurred_at=(base + timedelta(minutes=4)).isoformat(),
+                        route_key="signup",
+                        element_key="signup.form",
+                    ),
+                ],
+            )
+
+            operator_email, operator_workspace, _ = await _new_workspace(client, "journey-timeline-operator")
+            operator_company_id = operator_workspace["company"]["id"]
+            await promote_to_admin(operator_email)
+            admin_headers = await login_headers(client, operator_email)
+
+            response = await client.get(
+                f"/api/v1/admin/journeys/sessions/{session_id}",
+                headers=admin_headers,
+            )
+            missing = await client.get(
+                f"/api/v1/admin/journeys/sessions/{uuid.uuid4()}",
+                headers=admin_headers,
+            )
+
+        assert response.status_code == 200, response.text
+        data = response.json()
+        assert data["id"] == session_id
+        assert data["company_id"] == merchant_company_id
+        assert data["truncated"] is False
+        assert [event["name"] for event in data["events"]] == [
+            "page.viewed",
+            "ui.form_validation_failed",
+            "page.left",
+        ]
+        timestamps = [event["occurred_at"] for event in data["events"]]
+        assert timestamps == sorted(timestamps)
+
+        last = data["events"][-1]
+        assert last["route_key"] == "signup"
+        assert last["element_key"] == "signup.form"
+        assert last["properties"]["dwell_ms"] == 12000
+        assert "anonymous_id" not in data
+        for event in data["events"]:
+            assert set(event) == {"occurred_at", "name", "route_key", "element_key", "duration_ms", "properties"}
+
+        assert missing.status_code == 404
+    finally:
+        for email, company_id in (
+            (merchant_email, merchant_company_id),
+            (operator_email, operator_company_id),
+        ):
+            if email:
+                await _purge_analytics(email, company_id)
+                await cleanup(email, company_id)
