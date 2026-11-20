@@ -426,7 +426,7 @@ file committed in `packages/`), so the client cannot invent names either.
 | `session.ended` | `exit_route`, `duration_ms`, `reason` | `pagehide`/30 min idle | 1.0 |
 | `page.viewed` | `route`, `route_key`, `title_key` | route change | 1.0 |
 | `page.left` | `route_key`, `dwell_ms`, `scroll_pct` | route change/unload | 1.0 |
-| `ui.click` | `element_key`, `role`, `label_key`, `route_key` | meaningful click | 0.2 |
+| `ui.click` | `element_key`, `role`, `label_key`, `route_key` | meaningful click | 1.0 merchant, 0.2 shopper |
 | `ui.rage_click` | `element_key`, `route_key`, `clicks` | ≥3 clicks/1 s on same element | 1.0 |
 | `ui.dead_click` | `element_key`, `route_key` | click, no DOM/route change in 700 ms | 1.0 |
 | `ui.form_field_focused` | `form`, `field` | focus | 1.0 |
@@ -539,9 +539,13 @@ Behaviour:
 - **Dedupe.** Every event gets a client `uuid`; server upserts on `event_id`.
 - **IDs.** `anonymous_id` in `localStorage` (`chmaba.anon_id`, uuid v4, never
   expires); `session_id` in `sessionStorage`, rotated after 30 min inactive.
-- **Sampling.** Milestones and step events at 1.0; `ui.click` at 0.2 on
-  workspace routes, 1.0 inside an open funnel step. Sampling decision is made
-  once per session for `ui.click` to avoid biased per-click selection.
+- **Sampling.** Milestones and step events at 1.0. `ui.click` is **1.0 on all
+  merchant routes** — at this volume (see §14) storing every meaningful click is
+  affordable, and it is what makes "every click" literally true. Only shopper
+  storefront traffic is sampled (0.2), and storefront is not where the activation
+  question lives. A step that is open is always 1.0 regardless of source. The
+  sampling decision is made once per session, never per click, so a session is
+  either fully recorded or not at all (avoids biased funnels).
 - **Autocapture.** Global capture listener; keep clicks on
   `button, a, [role=button], [data-track], input[type=checkbox], [role=tab]`,
   and only when the element is inside the app (not the user's own embedded
@@ -691,7 +695,8 @@ Rules:
 
 - Max 100 events/request, 64 KB body, 4 KB/event properties.
 - 204 on success (no echo), 400 on malformed, 429 with `Retry-After` beyond
-  `200 events/min/session` or `2,000/min/IP`.
+  `600 events/min/session` or `10,000/min/IP` (sized for unsampled click
+  capture; a normal session emits far less).
 - `occurred_at` more than 7 days in the future or 30 days in the past is
   clamped; the original is kept in `context.skew_ms`.
 - CORS: allow the storefront host and app host only.
@@ -821,6 +826,51 @@ an actionable sentence.
 The product handles merchant and shopper PII, so tracking is a data-processing
 decision, not just a dev task.
 
+### 13.1 Position: full-coverage, content-minimised
+
+As the service provider, we **do** have a legitimate basis to observe how our
+own product is used in order to operate and improve it. That covers clicks,
+navigation, timing, errors, and flow completion — on our own surfaces, with our
+own accounts. This plan is deliberately **not** restrictive about *coverage*: on
+the merchant app every meaningful click is captured (1.0, unsampled). The limits
+are about *content*, not reach.
+
+The distinction that matters:
+
+| We record | We never record |
+|---|---|
+| Which control was clicked, on which route, at what time | What the user typed into it |
+| How long a step took, and where it was abandoned | Passwords, codes, tokens, card numbers |
+| That a field failed validation, and which rule | The field's value |
+| That a request failed, endpoint + status | Request bodies or response bodies |
+| Screen-level replay with inputs masked (if enabled) | Screen contents without masking |
+
+Why this is the right line for a POS specifically:
+
+- **Merchant accounts are business data; shoppers are consumers.** The merchant
+  is our customer and can be told plainly what we measure. A shopper in the
+  storefront may be in a jurisdiction with stricter rules, so shopper analytics
+  stays aggregate and non-identifying.
+- **We may be a processor for the merchant's workspace data.** Behavioural
+  telemetry about how the merchant's own staff use the product is a different
+  processing purpose from storing their sales; the privacy policy and the
+  merchant agreement must say so, and the data must be separable and deletable
+  per workspace.
+- **Secrets are not "usage data".** Verification tokens, reset tokens, ABA PayWay
+  links, and QR strings sit in URLs on this exact flow. They are the highest-risk
+  thing an over-eager click tracker would capture, which is why §6.4/§13 make
+  URL redaction a hard requirement rather than a nice-to-have.
+- **Staff monitoring is not the goal.** A merchant's cashier is an employee of
+  the merchant, not of Chmaba. Per-user click data is for product diagnosis, not
+  performance scoring; exports exclude shopper PII and are platform-admin only.
+
+Practical obligations that make the position defensible: disclose it in the
+privacy policy in plain language ("we record how the product is used so we can
+fix it"), keep raw data 90 days, honour deletion, restrict access, and never
+sell or share it. If we later add session replay, that is the one feature that
+needs an explicit notice because it is qualitatively different from a click
+count.
+
 | Rule | Implementation |
 |---|---|
 | No secrets in events | Server-side key allowlist; drop `password`, `token`, `authorization`, `card`, `qr_string`, `aba_payway_link`, `phone`, `email` |
@@ -845,6 +895,10 @@ Assumptions (deliberately conservative): 2,000 monthly active merchant users,
 1,500 sessions/day, 120 events/session after sampling.
 
 - **Events:** ~180k/day, ~5.4M/month, ~16M in the 90-day window.
+- **Clicks, unsampled:** ~150 meaningful clicks/session × 1,500 sessions/day ≈
+  225k clicks/day, ~6.8M/month. This is why 1.0 sampling on merchant routes is
+  affordable: the total is ~400k rows/day, well inside a single Postgres
+  instance with partitioned inserts.
 - **Storage:** ~0.5–1 KB/row → 8–16 GB raw, plus indexes. Comfortable for the
   existing Postgres instance; check disk headroom before Phase 3.
 - **Write path:** one batched `INSERT … VALUES` per request (20 events). The
