@@ -5225,3 +5225,50 @@ class StoreChatCannedReplyRead(APIModel):
 class StoreChatCannedReplyWrite(BaseModel):
     label: str = Field(min_length=1, max_length=60)
     body: str = Field(min_length=1, max_length=500)
+
+
+class TelemetryUtmIn(BaseModel):
+    source: str | None = Field(default=None, max_length=120)
+    medium: str | None = Field(default=None, max_length=120)
+    campaign: str | None = Field(default=None, max_length=120)
+    content: str | None = Field(default=None, max_length=120)
+    term: str | None = Field(default=None, max_length=120)
+
+
+class TelemetrySessionIn(BaseModel):
+    id: UUID
+    anonymous_id: UUID
+    started_at: datetime | None = None
+    entry_route: str | None = Field(default=None, max_length=300)
+    referrer_host: str | None = Field(default=None, max_length=200)
+    utm: TelemetryUtmIn | None = None
+    platform: str | None = Field(default=None, max_length=20)
+    os: str | None = Field(default=None, max_length=60)
+    browser: str | None = Field(default=None, max_length=60)
+    device_type: str | None = Field(default=None, max_length=20)
+    locale: str | None = Field(default=None, max_length=20)
+    timezone: str | None = Field(default=None, max_length=60)
+
+
+class TelemetryEventIn(BaseModel):
+    id: UUID
+    name: str = Field(min_length=1, max_length=80)
+    occurred_at: datetime | None = None
+    route: str | None = Field(default=None, max_length=300)
+    route_key: str | None = Field(default=None, max_length=80)
+    element_key: str | None = Field(default=None, max_length=120)
+    duration_ms: int | None = Field(default=None, ge=0, le=86_400_000)
+    props: dict[str, Any] = Field(default_factory=dict)
+
+
+class TelemetryBatchIn(BaseModel):
+    source: Literal["web", "storefront", "android", "ios"] = "web"
+    app_version: str | None = Field(default=None, max_length=40)
+    sent_at: datetime | None = None
+    session: TelemetrySessionIn
+    events: list[TelemetryEventIn] = Field(default_factory=list)
+
+
+class TelemetryBatchRead(BaseModel):
+    accepted: int
+    dropped: int

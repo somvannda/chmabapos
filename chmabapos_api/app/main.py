@@ -12,6 +12,8 @@ from sqlalchemy import func, select
 from app.api.v1 import expire_unpaid_online_orders, reconcile_open_held_order_payments, reconcile_open_order_payments, reconcile_pending_billing_payments, release_stale_reservations, router as v1_router
 from app.api.admin import router as admin_router
 from app.api.printing import router as printing_router
+from app.api.telemetry import router as telemetry_router
+from app import analytics
 from app.config import settings
 from app.db import SessionLocal, engine
 from app.services.billing_lifecycle import BILLING_JOB_LOCK_KEY, reconcile_effective_capacity, run_expiry_job
@@ -231,6 +233,27 @@ async def _run_billing_lifecycle() -> None:
         await asyncio.sleep(max(300, settings.billing_job_interval_seconds))
 
 
+async def _run_analytics_maintenance() -> None:
+    """Keep telemetry partitions ahead of the clock and refresh rollups.
+
+    A missing partition is the only way the collector can silently lose events,
+    so this runs hourly and creates a few months ahead. Rollups are recomputed
+    for the last three days (late events and timezone edges) and old raw
+    partitions are dropped by date rather than with a mass delete.
+    """
+    while True:
+        try:
+            async with SessionLocal() as db:
+                stats = await analytics.run_maintenance(db)
+                await db.commit()
+            logger.debug("analytics maintenance: %s", stats)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # a bad sweep must never kill the worker
+            logger.exception("analytics maintenance failed")
+        await asyncio.sleep(max(300, settings.analytics_worker_interval_seconds))
+
+
 async def _run_health_sweep() -> None:
     """Probe every platform dependency on a loop and page when one stays down.
 
@@ -320,6 +343,8 @@ async def lifespan(_: FastAPI):
             workers.append(asyncio.create_task(_expire_reservations()))
         if settings.chat_alert_worker_enabled:
             workers.append(asyncio.create_task(_queue_chat_alerts()))
+        if settings.analytics_worker_enabled:
+            workers.append(asyncio.create_task(_run_analytics_maintenance()))
     yield
     for worker in workers:
         worker.cancel()
@@ -405,6 +430,7 @@ async def limit_public_requests(request: Request, call_next):
 app.include_router(v1_router, prefix="/api/v1")
 app.include_router(admin_router, prefix="/api/v1")
 app.include_router(printing_router, prefix="/api/v1")
+app.include_router(telemetry_router, prefix="/api/v1")
 
 _media_root = Path(settings.media_root)
 _media_root.mkdir(parents=True, exist_ok=True)

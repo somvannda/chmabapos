@@ -2250,3 +2250,125 @@ class SystemHealthEvent(Base):
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     detail: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AnalyticsSession(Base):
+    """One client session on Chmaba, from first event to 30 minutes idle.
+
+    Pre-signup behaviour has no ``user_id`` yet. When the person registers or
+    signs in, the collector attaches the identity to the same row, so the
+    anonymous landing can be joined to the account it became.
+    """
+
+    __tablename__ = "analytics_sessions"
+    __table_args__ = (
+        Index("ix_analytics_sessions_user_time", "user_id", "started_at"),
+        Index("ix_analytics_sessions_company_time", "company_id", "started_at"),
+        Index("ix_analytics_sessions_anon", "anonymous_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    anonymous_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"), nullable=True
+    )
+    store_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stores.id", ondelete="SET NULL"), nullable=True
+    )
+    source: Mapped[str] = mapped_column(String(20), default="web")
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    entry_route: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    exit_route: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    referrer_host: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    utm_source: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    utm_medium: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    utm_campaign: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    utm_content: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    utm_term: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    app_version: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    platform: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    os: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    browser: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    device_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    locale: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    timezone: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    # Platform staff and the platform's own addresses are excluded from product
+    # funnels: a handful of internal sessions would be a large share of a small
+    # dataset.
+    is_internal: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    ip_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String(400), nullable=True)
+
+
+class AnalyticsEvent(Base):
+    """One recorded event, range-partitioned by ``occurred_at``.
+
+    Server milestones are written here too, with ``source='api'``; they are the
+    authoritative numbers in the activation funnel because a browser can be
+    closed, blocked or offline exactly when a merchant gives up.
+
+    ``session_id`` is nullable on purpose: a webhook or a background job has no
+    browser session, but its milestone still belongs in the funnel.
+    """
+
+    __tablename__ = "analytics_events"
+    __table_args__ = (
+        UniqueConstraint("event_id", "occurred_at", name="ux_analytics_events_event_id"),
+        Index("ix_analytics_events_name_time", "name", "occurred_at"),
+        Index("ix_analytics_events_session", "session_id", "occurred_at"),
+        Index("ix_analytics_events_user_time", "user_id", "occurred_at"),
+        Index("ix_analytics_events_company_time", "company_id", "occurred_at"),
+        {"postgresql_partition_by": "RANGE (occurred_at)"},
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    event_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    session_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    anonymous_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    company_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"), nullable=True
+    )
+    store_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("stores.id", ondelete="SET NULL"), nullable=True
+    )
+    name: Mapped[str] = mapped_column(String(80))
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    source: Mapped[str] = mapped_column(String(20), default="web")
+    route: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    route_key: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    element_key: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    properties: Mapped[dict] = mapped_column(JSON, default=dict)
+    context: Mapped[dict] = mapped_column(JSON, default=dict)
+
+
+class AnalyticsDailyRollup(Base):
+    """Per-day aggregate so long-range charts never scan raw partitions.
+
+    ``company_key`` is text (empty means platform-wide) rather than a nullable
+    FK: the column is part of the primary key, and Postgres primary-key columns
+    are implicitly NOT NULL.
+    """
+
+    __tablename__ = "analytics_daily_rollups"
+
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+    name: Mapped[str] = mapped_column(String(80), primary_key=True)
+    route_key: Mapped[str] = mapped_column(String(80), primary_key=True, default="")
+    source: Mapped[str] = mapped_column(String(20), primary_key=True, default="")
+    company_key: Mapped[str] = mapped_column(String(40), primary_key=True, default="")
+    events: Mapped[int] = mapped_column(BigInteger, default=0)
+    sessions: Mapped[int] = mapped_column(BigInteger, default=0)
+    users: Mapped[int] = mapped_column(BigInteger, default=0)
+    p50_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    p95_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)

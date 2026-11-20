@@ -232,6 +232,28 @@ class Settings(BaseSettings):
     # of signatures a single operator can request per minute.
     qz_print_request_max_bytes: int = 16_384
     qz_print_sign_rate_limit_per_minute: int = 120
+    # First-party product telemetry (see docs/onboarding-activation-analytics-plan.md).
+    # The collector is deliberately isolated from every selling path: a failure
+    # here must never fail a sale, so the endpoint is public, best-effort and
+    # rate-limited, and ``emit()`` swallows its own errors.
+    analytics_enabled: bool = True
+    analytics_worker_enabled: bool = True
+    analytics_worker_interval_seconds: int = 3600
+    # Raw events are kept for diagnosis; only the rollups are long-lived.
+    analytics_raw_retention_days: int = 90
+    analytics_rollup_retention_days: int = 730
+    # Sized for unsampled click capture on the merchant app: a busy till emits
+    # far less than this, while the ceiling still stops a runaway loop.
+    analytics_rate_limit_per_session_per_minute: int = 600
+    analytics_rate_limit_per_ip_per_minute: int = 10_000
+    analytics_max_batch_events: int = 100
+    analytics_max_event_bytes: int = 4_096
+    analytics_max_request_bytes: int = 262_144
+    # IPs are never stored raw; the salt makes the hash useless elsewhere.
+    analytics_ip_salt: str = "chmaba-analytics"
+    # Platform admins and these addresses are flagged internal and excluded from
+    # product funnels (they would otherwise dominate a small dataset).
+    analytics_internal_email_domains: str = "chmaba.com"
 
     model_config = SettingsConfigDict(env_file="chmabapos_api/.env", env_file_encoding="utf-8", extra="ignore")
 
