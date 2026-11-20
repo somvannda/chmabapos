@@ -32,6 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.billing import FREE_PLAN_CODE, is_in_force, load_entitlement, plan_from_terms, plan_terms, recommend_plan
+from app.analytics import emit
 from app import support_content
 from pathlib import Path
 
@@ -1268,6 +1269,7 @@ async def register(payload: RegisterRequest, request: Request, db: AsyncSession 
     await contacts_service.link_contact_for_user(db, user.email, user.id)
     code, verification_id = await issue_verification_code(db, user.id)
     await record_activity(db, "user.registered", user=user, details={"full_name": user.full_name})
+    emit(db, "user.registered", user=user, properties={"method": "password"})
     await db.commit()
     await db.refresh(user)
     await send_verification_email(user.email, code)
@@ -1340,6 +1342,7 @@ async def verify_email(payload: VerifyEmailRequest, db: AsyncSession = Depends(g
     if attempt_key:
         support_service.clear_rate_limit(attempt_key)
     await record_activity(db, "user.email_verified", user=user)
+    emit(db, "user.email_verified", user=user, properties={"method": "code"})
     await db.commit()
     await db.refresh(user)
     await send_welcome_email(user.email, user.full_name, username_for(user.email, user.full_name))
@@ -1410,6 +1413,7 @@ async def login(payload: LoginRequest, response: Response, request: Request, db:
     new_device = await is_new_device(db, user.id, user_agent=request.headers.get("user-agent"))
     session, refresh_token = await create_session(db, user, remember=payload.remember_me, request=request)
     await record_activity(db, "user.logged_in", user=user, details={"method": "password"})
+    emit(db, "user.logged_in", user=user, properties={"method": "password"})
     cookie_max_age = session_cookie_max_age(session)
     await db.commit()
     if new_device:
@@ -1935,6 +1939,28 @@ async def setup_workspace(payload: WorkspaceSetupRequest, user: User = Depends(g
         metadata["provider"] = provider_name
         billing_payment = BillingPayment(subscription_id=subscription.id, company_id=company.id, plan_code=plan.code, billing_cycle=billing_cycle, provider=provider_name, amount=total_amount, currency_code=provider_payment.currency, external_id=provider_payment.id, reference_id=provider_payment.reference_id or reference, status=provider_payment.status, qr_string=provider_payment.qr_string, checkout_url=provider_payment.checkout_url, provider_metadata=metadata)
         db.add(billing_payment)
+    emit(
+        db,
+        "workspace.created",
+        user=user,
+        company_id=company.id,
+        store_id=store.id,
+        properties={
+            "vertical": company.vertical,
+            "plan_code": plan.code,
+            "billing_cycle": payload.billing_cycle,
+            "country": company.country,
+            "currency": currency.code,
+        },
+    )
+    emit(
+        db,
+        "plan.selected",
+        user=user,
+        company_id=company.id,
+        store_id=store.id,
+        properties={"plan_code": plan.code, "billing_cycle": payload.billing_cycle},
+    )
     await db.commit()
     await db.refresh(membership)
     await db.refresh(store)
@@ -4725,6 +4751,17 @@ async def create_product(payload: ProductCreateRequest, context: StoreContext = 
     db.add(balance)
     if payload.opening_stock:
         db.add(StockMovement(store_id=context.store.id, product_id=product.id, quantity=payload.opening_stock, movement_type="opening_balance", reason="product_created", unit_cost=payload.cost_price, created_by=context.user.id))
+    emit(
+        db,
+        "product.created",
+        user=context.user,
+        company_id=membership.company_id,
+        store_id=context.store.id,
+        properties={
+            "track_inventory": bool(payload.track_inventory),
+            "opening_stock": str(payload.opening_stock or 0),
+        },
+    )
     await db.commit()
     product_result = await db.execute(select(Product).where(Product.id == product.id).options(selectinload(Product.category)))
     return product_read(product_result.scalar_one(), balance)
@@ -11638,6 +11675,14 @@ async def open_shift(payload: ShiftOpenRequest, context: StoreContext = Depends(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A shift is already open for this register")
     shift = Shift(store_id=context.store.id, user_id=context.user.id, status="open", opening_float=payload.opening_float, opened_at=now_utc())
     db.add(shift)
+    emit(
+        db,
+        "shift.opened",
+        user=context.user,
+        company_id=context.membership.company_id,
+        store_id=context.store.id,
+        properties={"opening_float_present": payload.opening_float is not None},
+    )
     await db.commit()
     return shift_read(shift, context.user.full_name)
 
