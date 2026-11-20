@@ -360,6 +360,15 @@ SYSTEM_EMAILS: Final[tuple[EmailCatalogEntry, ...]] = (
         "delivery": "Scheduled",
     },
     {
+        "key": "billing.price_change",
+        "name": "Renewal price changing",
+        "category": "Billing",
+        "audience": "Workspace owner",
+        "trigger": "An admin changes the monthly price of a plan while the workspace still has paid time ahead; explains the next renewal amount.",
+        "subject": "Your {plan} renewal price changes to ${amount}/month",
+        "delivery": "Queued",
+    },
+    {
         "key": "billing.plan_expired",
         "name": "Plan expired",
         "category": "Billing",

@@ -152,7 +152,7 @@ async def test_send_requires_super_admin_and_records_delivery(monkeypatch) -> No
     stalled = f"mailing-stalled-{uuid.uuid4().hex[:8]}@example.com"
     suppressed = f"mailing-optedout-{uuid.uuid4().hex[:8]}@example.com"
 
-    async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None, from_address=None, from_name=None):
+    async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None, from_address=None, from_name=None, purpose=None):
         return True, None
 
     monkeypatch.setattr("app.services.mailing.send_marketing_email_with_id", fake_send)
@@ -224,7 +224,7 @@ async def test_send_requires_super_admin_and_records_delivery(monkeypatch) -> No
 async def test_test_send_targets_one_address() -> None:
     admin = f"mailing-admin-{uuid.uuid4().hex[:8]}@example.com"
 
-    async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None, from_address=None, from_name=None):
+    async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None, from_address=None, from_name=None, purpose=None):
         return True, None
 
     import app.services.mailing as mailing_service
@@ -257,7 +257,7 @@ async def test_send_uses_selected_sender_and_reply_to(monkeypatch) -> None:
     sender = f"hello-{uuid.uuid4().hex[:8]}@example.com"
     captured: dict = {}
 
-    async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None, from_address=None, from_name=None):
+    async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None, from_address=None, from_name=None, purpose=None):
         captured.update({"recipient": recipient, "reply_to": reply_to, "from_address": from_address, "from_name": from_name})
         return True, "re_sender"
 
@@ -715,7 +715,7 @@ async def test_send_personalizes_tokens_per_recipient() -> None:
     stalled = f"mailing-personal-{uuid.uuid4().hex[:8]}@example.com"
     captured = {}
 
-    async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None, from_address=None, from_name=None):
+    async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None, from_address=None, from_name=None, purpose=None):
         captured[recipient] = {"subject": subject, "html": html}
         return True, "re_personalized"
 
@@ -770,7 +770,7 @@ async def test_contact_category_is_a_mailable_segment() -> None:
     category_name = f"Campaign Leads {uuid.uuid4().hex[:6]}"
     captured = {}
 
-    async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None, from_address=None, from_name=None):
+    async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None, from_address=None, from_name=None, purpose=None):
         captured[recipient] = {"subject": subject, "html": html}
         return True, "re_contact"
 
@@ -913,7 +913,7 @@ async def test_drip_sends_once_per_step_and_is_idempotent() -> None:
     stalled = f"mailing-drip-{uuid.uuid4().hex[:8]}@example.com"
     sent_to = []
 
-    async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None, from_address=None, from_name=None):
+    async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None, from_address=None, from_name=None, purpose=None):
         sent_to.append(recipient)
         return True, None
 
@@ -1018,7 +1018,7 @@ async def test_drip_settings_require_super_admin_to_change() -> None:
 async def test_queue_retries_with_backoff_then_fails() -> None:
     address = f"mailing-retry-{uuid.uuid4().hex[:8]}@example.com"
 
-    async def failing_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None, from_address=None, from_name=None):
+    async def failing_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None, from_address=None, from_name=None, purpose=None):
         return False, None
 
     import app.services.mailing as mailing_service
@@ -1064,7 +1064,7 @@ async def test_queue_retries_with_backoff_then_fails() -> None:
 async def test_queue_skips_an_address_that_unsubscribed_after_enqueue() -> None:
     address = f"mailing-late-optout-{uuid.uuid4().hex[:8]}@example.com"
 
-    async def must_not_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None, from_address=None, from_name=None):
+    async def must_not_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None, from_address=None, from_name=None, purpose=None):
         raise AssertionError("a suppressed recipient must never be sent to")
 
     import app.services.mailing as mailing_service
@@ -1240,7 +1240,7 @@ async def test_campaign_groups_sends_and_reports_stats() -> None:
     campaign_id = None
     sent = []
 
-    async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None, from_address=None, from_name=None):
+    async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None, from_address=None, from_name=None, purpose=None):
         sent.append(recipient)
         return True, "re_campaign"
 
@@ -1343,7 +1343,7 @@ async def test_drip_can_target_contact_categories() -> None:
     contact_id = None
     sent = []
 
-    async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None, from_address=None, from_name=None):
+    async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None, from_address=None, from_name=None, purpose=None):
         sent.append(recipient)
         return True, None
 
@@ -1439,7 +1439,7 @@ async def test_send_can_skip_contacts_without_consent() -> None:
     category_name = f"Consent Campaign {uuid.uuid4().hex[:6]}"
     sent = []
 
-    async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None, from_address=None, from_name=None):
+    async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None, from_address=None, from_name=None, purpose=None):
         sent.append(recipient)
         return True, "re_consent"
 
@@ -1504,7 +1504,7 @@ async def test_scheduled_campaign_releases_once() -> None:
     campaign_id = None
     sent = []
 
-    async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None, from_address=None, from_name=None):
+    async def fake_send(recipient, subject, html, *, unsubscribe_token=None, reply_to=None, from_address=None, from_name=None, purpose=None):
         sent.append(recipient)
         return True, "re_scheduled"
 

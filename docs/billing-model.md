@@ -206,11 +206,14 @@ time; it is never rewritten. Owners see them on the Billing page and via
   - expires overdue paid subscriptions, provisions the Free fallback,
     pauses/revokes beyond Free capacity, clears stale scheduled plan changes
     that were never paid;
-  - sends the renewal reminders (in-app + email from
-    `billing@chmaba.com`, referencing the next plan's amount and deep-linking
-    into the Billing page with the plan and cycle pre-selected — no embedded QR,
-    because KHQR payments expire far sooner than the reminder horizon, so the QR
-    is minted on arrival). The email is queued through the `email_sends` outbox
+  - sends the renewal reminders (in-app + email using the billing sender,
+    `billing@chmaba.com` by default, referencing the next plan's amount and
+    deep-linking into the Billing page with the plan and cycle pre-selected — no
+    embedded QR, because KHQR payments expire far sooner than the reminder
+    horizon, so the QR is minted on arrival). When the renewal amount differs
+    from the price the owner paid for the current period, the reminder says so
+    explicitly ("Your renewal price changes from $X to $Y"); identical amounts
+    add no note. The email is queued through the `email_sends` outbox
     (source `billing_reminder`) rather than sent inline, so a mail outage retries
     it instead of dropping the reminder. The cadence is
     `BILLING_REMINDER_OFFSETS` (default `7,3,1` days before `ends_at`); invalid
@@ -223,14 +226,22 @@ time; it is never rewritten. Owners see them on the Billing page and via
 ## Reminders
 
 In-app + email at **-7 / -3 / -1 days** before `ends_at`, addressed to all
-owners, sent from `billing@chmaba.com` (SPF/DKIM/DMARC aligned, reply-to
-`support@chmaba.com`). Reminders reference the scheduled/next plan's amount and
+owners, sent from the billing sender (`billing@chmaba.com` by default, configured
+with `MAIL_FROM_BILLING`) with `Reply-To: support@chmaba.com`
+(`MAIL_REPLY_TO`). Reminders reference the scheduled/next plan's amount and
 are **actionable**: the in-app notification carries a relative link
 (`billing?renew=<plan>&cycle=<cycle>&pay=1`) and the email's CTA is that link
 made absolute for the owner's workspace. Opening it lands on Billing with the
 "Renewal due" panel and a **Pay with KHQR** button, and mints the KHQR on
 arrival rather than embedding one that would expire. The after-expiry notice
 links to Billing the same way.
+
+When an owner renews early, or when an admin changes a plan's price while paid
+time is still in force, the amount shown is the **live catalog price** the next
+renewal will charge. A price that differs from the current period is called out
+in the reminder; a renewal at the same price is not. Admins editing a plan price
+also queue a one-off `billing_price_change` email to every workspace with paid
+time ahead, explaining the date the new price starts.
 
 Delivery and lifecycle: the in-app nudge is kept to **one current row per
 owner** — each reminder, and the after-expiry notice, replaces the previous one

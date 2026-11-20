@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.email import app_url, html_to_text, send_email_with_id, send_marketing_email_with_id, unsubscribe_url, username_for
 from app.models import Company, Contact, ContactCategory, EmailClickEvent, EmailSend, EmailSuppression, EmailVerificationToken, MailingCampaign, MailingDripDelivery, Membership, Order, PlatformSetting, Product, Store, User
+from app.services.mail import purpose_from_source
 from app.security import ALGORITHM
 from app.services import mail as mail_service
 from app.services.email_layout import data_table, transactional_email
@@ -981,7 +982,7 @@ async def _alert_dead_letters(db: AsyncSession, failed: list[EmailSend]) -> None
     )
     for recipient in recipients:
         try:
-            await send_email_with_id(recipient, f"Mail delivery failures · {len(failed)} message(s)", html_to_text(alert), html=alert)
+            await send_email_with_id(recipient, f"Mail delivery failures · {len(failed)} message(s)", html_to_text(alert), html=alert, purpose="ops")
         except Exception:
             pass
 
@@ -1020,6 +1021,7 @@ async def send_pending_emails(db: AsyncSession, *, limit: int = 50, now: datetim
         provider = await current_provider(db)
         for row in rows:
             stats["processed"] += 1
+            purpose = None if row.from_address else purpose_from_source(row.source)
             if row.source not in TRANSACTIONAL_SOURCES and row.recipient_email.strip().lower() in blocked:
                 row.status = "skipped"
                 row.error = "Recipient unsubscribed before sending"
@@ -1039,6 +1041,7 @@ async def send_pending_emails(db: AsyncSession, *, limit: int = 50, now: datetim
                         reply_to=row.reply_to,
                         from_address=row.from_address,
                         from_name=row.from_name,
+                        purpose=purpose,
                     )
                 else:
                     ok, message_id = await send_email_with_id(
@@ -1048,6 +1051,7 @@ async def send_pending_emails(db: AsyncSession, *, limit: int = 50, now: datetim
                         reply_to=row.reply_to,
                         from_address=row.from_address,
                         from_name=row.from_name,
+                        purpose=purpose,
                     )
             else:
                 ok, message_id = await send_marketing_email_with_id(
@@ -1058,6 +1062,7 @@ async def send_pending_emails(db: AsyncSession, *, limit: int = 50, now: datetim
                     reply_to=row.reply_to,
                     from_address=row.from_address,
                     from_name=row.from_name,
+                    purpose=purpose,
                 )
             row.attempts += 1
             row.last_attempt_at = now

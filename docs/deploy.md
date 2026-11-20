@@ -116,9 +116,24 @@ up to a day.
 0 * * * * cd /srv/chmaba && docker compose -f deploy/docker-compose.prod.yml exec -T api python chmabapos_api/scripts/run_billing_jobs.py >> /var/log/chmaba-billing.log 2>&1
 ```
 
-Billing reminder emails are sent from `SMTP_FROM`; set it to
-`billing@chmaba.com` in `deploy/.env` and add that address as a verified
-Brevo sender so reminders don't land in spam.
+Billing reminder emails use the billing sender. `SMTP_FROM` remains the default
+for unmapped mail (`no-reply@chmaba.com`); automated email derives a branded
+address from its domain unless overridden:
+
+| Purpose | Default | Override |
+| --- | --- | --- |
+| Billing | `billing@chmaba.com` | `MAIL_FROM_BILLING` |
+| Support | `support@chmaba.com` | `MAIL_FROM_SUPPORT` |
+| Account & security | `security@chmaba.com` | `MAIL_FROM_SECURITY` |
+| Onboarding | `hello@chmaba.com` | `MAIL_FROM_ONBOARDING` |
+| Customer receipts | `receipts@chmaba.com` | `MAIL_FROM_RECEIPTS` |
+| Store notifications | `notifications@chmaba.com` | `MAIL_FROM_NOTIFICATIONS` |
+| Marketing | `hello@chmaba.com` | `MAIL_FROM_MARKETING` |
+| Internal ops | `ops@chmaba.com` | `MAIL_FROM_OPS` |
+
+Replies route to `MAIL_REPLY_TO`, which defaults to `support@<SMTP_FROM domain>`.
+Add every address you actually use as a verified Brevo sender, and keep the
+`chmaba.com` SPF/DKIM/DMARC records aligned.
 
 ## 7. Mailing queue
 

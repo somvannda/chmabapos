@@ -18,6 +18,7 @@ async def send_email_with_id(
     reply_to: str | None = None,
     from_address: str | None = None,
     from_name: str | None = None,
+    purpose: str | None = None,
 ) -> tuple[bool, str | None]:
     """Send one message via the configured provider, returning ``(ok, message_id)``."""
     return await deliver_message_with_id(
@@ -29,6 +30,7 @@ async def send_email_with_id(
         reply_to=reply_to,
         from_address=from_address,
         from_name=from_name,
+        purpose=purpose,
     )
 
 
@@ -42,6 +44,7 @@ async def send_email(
     reply_to: str | None = None,
     from_address: str | None = None,
     from_name: str | None = None,
+    purpose: str | None = None,
 ) -> bool:
     """Send one message via the configured provider (SMTP or Resend)."""
     ok, _ = await send_email_with_id(
@@ -53,6 +56,7 @@ async def send_email(
         reply_to=reply_to,
         from_address=from_address,
         from_name=from_name,
+        purpose=purpose,
     )
     return ok
 
@@ -70,7 +74,7 @@ async def send_verification_email(recipient: str, code: str) -> bool:
         body=body,
         badge="Verify",
     )
-    return await send_email(recipient, "Your Chmaba confirmation code", html_to_text(html), html=html)
+    return await send_email(recipient, "Your Chmaba confirmation code", html_to_text(html), html=html, purpose="security")
 
 
 async def send_password_reset_email(recipient: str, token: str) -> bool:
@@ -90,7 +94,7 @@ async def send_password_reset_email(recipient: str, token: str) -> bool:
         cta_href=url,
         footnote="This link expires in 30 minutes. If you did not request this, you can ignore this email.",
     )
-    return await send_email(recipient, "Reset your Chmaba password", html_to_text(html), html=html)
+    return await send_email(recipient, "Reset your Chmaba password", html_to_text(html), html=html, purpose="security")
 
 
 async def send_invitation_email(recipient: str, token: str, company_name: str) -> bool:
@@ -109,7 +113,7 @@ async def send_invitation_email(recipient: str, token: str, company_name: str) -
         cta_href=url,
         footnote="This invitation expires in 7 days. If you were not expecting it, you can ignore this email.",
     )
-    return await send_email(recipient, f"You were invited to {company_name} on Chmaba", html_to_text(html), html=html)
+    return await send_email(recipient, f"You were invited to {company_name} on Chmaba", html_to_text(html), html=html, purpose="security")
 
 
 def _first_name(full_name: str | None) -> str:
@@ -136,7 +140,7 @@ async def send_password_changed_email(recipient: str, full_name: str | None = No
         body=body,
         badge="Security",
     )
-    return await send_email(recipient, "Your Chmaba password was changed", html_to_text(html), html=html)
+    return await send_email(recipient, "Your Chmaba password was changed", html_to_text(html), html=html, purpose="security")
 
 
 async def send_new_signin_email(
@@ -166,7 +170,7 @@ async def send_new_signin_email(
         body=body,
         badge="Security",
     )
-    return await send_email(recipient, "New sign-in to your Chmaba account", html_to_text(html), html=html)
+    return await send_email(recipient, "New sign-in to your Chmaba account", html_to_text(html), html=html, purpose="security")
 
 
 def username_for(email: str | None, full_name: str | None) -> str:
@@ -204,7 +208,7 @@ async def send_welcome_email(recipient: str, full_name: str | None, username: st
         cta_href=url,
         footnote="If the link asks you to sign in first, sign in and you will be taken straight to setup.",
     )
-    return await send_email(recipient, "Welcome to Chmaba", html_to_text(html), html=html)
+    return await send_email(recipient, "Welcome to Chmaba", html_to_text(html), html=html, purpose="onboarding")
 
 
 async def send_store_ready_email(recipient: str, full_name: str | None, username: str, store_name: str) -> bool:
@@ -228,7 +232,7 @@ async def send_store_ready_email(recipient: str, full_name: str | None, username
         cta_href=url,
         footnote="Tip: replace the sample items with your own catalogue when you are ready.",
     )
-    return await send_email(recipient, "Your Chmaba store is ready", html_to_text(html), html=html)
+    return await send_email(recipient, "Your Chmaba store is ready", html_to_text(html), html=html, purpose="onboarding")
 
 
 def unsubscribe_url(token: str) -> str:
@@ -266,6 +270,7 @@ async def send_marketing_email_with_id(
     reply_to: str | None = None,
     from_address: str | None = None,
     from_name: str | None = None,
+    purpose: str | None = "marketing",
 ) -> tuple[bool, str | None]:
     """Send an HTML mailing with a one-click ``List-Unsubscribe`` header.
 
@@ -286,6 +291,7 @@ async def send_marketing_email_with_id(
         reply_to=reply_to,
         from_address=from_address,
         from_name=from_name,
+        purpose=purpose,
     )
 
 
@@ -298,6 +304,7 @@ async def send_marketing_email(
     reply_to: str | None = None,
     from_address: str | None = None,
     from_name: str | None = None,
+    purpose: str | None = "marketing",
 ) -> bool:
     """Send an HTML mailing with a one-click ``List-Unsubscribe`` header."""
     ok, _ = await send_marketing_email_with_id(
@@ -308,5 +315,6 @@ async def send_marketing_email(
         reply_to=reply_to,
         from_address=from_address,
         from_name=from_name,
+        purpose=purpose,
     )
     return ok

@@ -36,6 +36,16 @@ MAIL_SETTING_KEYS: tuple[str, ...] = (
     # JSON list of extra identities the composer may choose as From. The
     # default identity above is always available and need not be repeated.
     "mail_senders",
+    # Per-purpose From overrides for automated mail. Unset purposes derive
+    # their address from the configured default domain (see PURPOSES below).
+    "mail_from_billing",
+    "mail_from_support",
+    "mail_from_security",
+    "mail_from_onboarding",
+    "mail_from_receipts",
+    "mail_from_notifications",
+    "mail_from_marketing",
+    "mail_from_ops",
 )
 
 # A sender list is UI convenience, not a mailing list; cap it so a malformed
@@ -60,6 +70,52 @@ _ENV_MAIL_DEFAULTS: dict[str, str | None] = {
     "mail_reply_to": settings.mail_reply_to,
     "mail_support_inbox": settings.support_inbox,
     "mail_senders": None,
+    "mail_from_billing": settings.mail_from_billing,
+    "mail_from_support": settings.mail_from_support,
+    "mail_from_security": settings.mail_from_security,
+    "mail_from_onboarding": settings.mail_from_onboarding,
+    "mail_from_receipts": settings.mail_from_receipts,
+    "mail_from_notifications": settings.mail_from_notifications,
+    "mail_from_marketing": settings.mail_from_marketing,
+    "mail_from_ops": settings.mail_from_ops,
+}
+
+# Purpose -> local part used when no explicit ``mail_from_<purpose>`` is set.
+# The domain comes from the configured default sender, so a deploy only needs
+# SMTP_FROM (no-reply@chmaba.com) and gets billing@chmaba.com, support@... etc.
+PURPOSE_LOCAL_PARTS: dict[str, str] = {
+    "billing": "billing",
+    "support": "support",
+    "security": "security",
+    "onboarding": "hello",
+    "receipts": "receipts",
+    "notifications": "notifications",
+    "marketing": "hello",
+    "ops": "ops",
+}
+
+# Queued mail carries its purpose through ``EmailSend.source``. A source that
+# is not listed here keeps the platform default sender.
+SOURCE_PURPOSES: dict[str, str] = {
+    "billing_receipt": "billing",
+    "billing_failure": "billing",
+    "billing_reminder": "billing",
+    "billing_expiry": "billing",
+    "billing_price_change": "billing",
+    "quota_warning": "billing",
+    "sale_alert": "notifications",
+    "store_note": "notifications",
+    "store_chat_alert": "notifications",
+    "store_chat_reply": "notifications",
+    "receipt": "receipts",
+    "refund_confirmation": "receipts",
+    "online_order_ack": "receipts",
+    "online_order_expired": "receipts",
+    "service_ticket": "receipts",
+    "support_chat_reply": "support",
+    "shopper_signin": "security",
+    "manual": "marketing",
+    "drip": "onboarding",
 }
 
 
@@ -73,7 +129,43 @@ async def load_mail_settings(db: AsyncSession) -> dict[str, str | None]:
     overrides = {row.key: row.value for row in result.scalars().all() if row.value not in (None, "")}
     effective = dict(_ENV_MAIL_DEFAULTS)
     effective.update(overrides)
+    if not effective.get("mail_reply_to"):
+        effective["mail_reply_to"] = default_purpose_address(effective, "support")
     return effective
+
+
+def _mail_domain(cfg: dict[str, str | None]) -> str | None:
+    """Domain of the configured default sender, or ``None`` when unusable."""
+    address = (cfg.get("mail_from") or settings.smtp_from or "").strip()
+    if "@" not in address:
+        return None
+    domain = address.rsplit("@", 1)[1].strip().lower()
+    return domain or None
+
+
+def default_purpose_address(cfg: dict[str, str | None], purpose: str) -> str | None:
+    """Derive the branded address for a purpose from the default sender domain."""
+    local_part = PURPOSE_LOCAL_PARTS.get(purpose)
+    domain = _mail_domain(cfg)
+    if not local_part or not domain:
+        return None
+    return f"{local_part}@{domain}"
+
+
+def purpose_from_source(source: str | None) -> str | None:
+    """Purpose for a queued message, inferred from its outbox ``source``."""
+    return SOURCE_PURPOSES.get((source or "").strip().lower())
+
+
+def resolve_purpose_sender(cfg: dict[str, str | None], purpose: str) -> dict[str, str | None]:
+    """From identity for automated mail: explicit override, derived, then default."""
+    address = (cfg.get(f"mail_from_{purpose}") or "").strip()
+    if not address:
+        address = default_purpose_address(cfg, purpose) or ""
+    if not address:
+        address = (cfg.get("mail_from") or settings.smtp_from or "").strip()
+    name = (cfg.get("mail_from_name") or settings.mail_from_name or "").strip() or None
+    return {"address": address, "name": name}
 
 
 async def save_mail_settings(db: AsyncSession, updates: dict[str, str | None]) -> None:
@@ -329,10 +421,20 @@ async def deliver_message_with_id(
     reply_to: str | None = None,
     from_address: str | None = None,
     from_name: str | None = None,
+    purpose: str | None = None,
 ) -> tuple[bool, str | None]:
-    """Load the configured provider and deliver, returning ``(ok, message_id)``."""
+    """Load the configured provider and deliver, returning ``(ok, message_id)``.
+
+    ``purpose`` selects the branded From identity for automated mail (billing,
+    support, receipts, ...). An explicit ``from_address`` always wins, which is
+    how a composer-chosen campaign identity keeps working.
+    """
     try:
         cfg = await effective_mail_settings()
+        if from_address is None and purpose:
+            sender = resolve_purpose_sender(cfg, purpose)
+            from_address = sender["address"]
+            from_name = from_name or sender["name"]
         message_id = await send_with_settings(
             cfg,
             recipient=recipient,
@@ -359,6 +461,7 @@ async def deliver_message(
     reply_to: str | None = None,
     from_address: str | None = None,
     from_name: str | None = None,
+    purpose: str | None = None,
 ) -> bool:
     """Load the configured provider and deliver, returning success as a bool."""
     ok, _ = await deliver_message_with_id(
@@ -370,5 +473,6 @@ async def deliver_message(
         reply_to=reply_to,
         from_address=from_address,
         from_name=from_name,
+        purpose=purpose,
     )
     return ok

@@ -360,7 +360,7 @@ async def test_pickup_order_receipt_email_shows_deposit_and_balance(monkeypatch)
     company_id: str | None = None
     captured: dict = {}
 
-    async def fake_send(recipient, subject, text, html=None):
+    async def fake_send(recipient, subject, text, html=None, **kwargs):
         captured["recipient"] = recipient
         captured["subject"] = subject
         captured["html"] = html or text

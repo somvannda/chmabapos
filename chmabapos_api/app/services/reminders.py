@@ -11,17 +11,23 @@ as a last chance to renew instead.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from html import escape
 
 from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.orm import aliased
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.billing import FREE_PLAN_CODE
+from app.billing import FREE_PLAN_CODE, plan_from_terms
 from app.config import settings
 from app.email import app_url, username_for
 from app.models import BillingReminder, Company, EmailSend, Membership, Notification, Plan, Store, Subscription, User
-from app.services.billing_emails import BILLING_EXPIRY_SOURCE, BILLING_REMINDER_SOURCE, queue_billing_notice
+from app.services.billing_emails import (
+    BILLING_EXPIRY_SOURCE,
+    BILLING_PRICE_CHANGE_SOURCE,
+    BILLING_REMINDER_SOURCE,
+    queue_billing_notice,
+)
 from app.services.email_layout import data_table, transactional_email
 from app.services.pricing import period_label, period_total_label
 
@@ -83,7 +89,7 @@ async def clear_billing_notifications(db: AsyncSession, company_id: UUID) -> Non
                 EmailSend.company_id == company_id,
                 and_(EmailSend.company_id.is_(None), EmailSend.recipient_email.in_(owner_emails)),
             ),
-            EmailSend.source.in_([BILLING_REMINDER_SOURCE, BILLING_EXPIRY_SOURCE]),
+            EmailSend.source.in_([BILLING_REMINDER_SOURCE, BILLING_EXPIRY_SOURCE, BILLING_PRICE_CHANGE_SOURCE]),
             EmailSend.status == "queued",
         )
         .values(status="canceled", error="Plan paid before delivery")
@@ -118,21 +124,27 @@ async def _deliver_reminder(db: AsyncSession, subscription: Subscription, offset
     company = await db.get(Company, subscription.company_id)
     if company is None:
         return
-    current_plan = await db.get(Plan, subscription.plan_code)
-    if current_plan is None:
+    live_plan = await db.get(Plan, subscription.plan_code)
+    if live_plan is None:
         return
+    # The in-force period was sold under this snapshot, so show its name and
+    # price as the owner knows them. The renewal target is the live catalog row,
+    # because a renewal re-snapshots today's terms.
+    current_plan = plan_from_terms(subscription.plan_terms, code=subscription.plan_code) or live_plan
     ends_label = (subscription.ends_at or utc_now()).date().isoformat()
     cancelling = subscription.scheduled_plan_code == FREE_PLAN_CODE
     next_code = subscription.plan_code if (cancelling or not subscription.scheduled_plan_code) else subscription.scheduled_plan_code
     next_plan = await db.get(Plan, next_code)
     if next_plan is None:
         return
+    current_amount = period_total_label(current_plan.monthly_price, subscription.billing_cycle)
     amount = period_total_label(next_plan.monthly_price, subscription.billing_cycle)
     cycle = period_label(subscription.billing_cycle)
     ended = subscription.ends_at is not None and subscription.ends_at <= utc_now()
     if ended:
+        # Renewal is for the plan the owner actually had, at today's price.
+        amount = period_total_label(live_plan.monthly_price, subscription.billing_cycle)
         grace_until = (subscription.ends_at + timedelta(hours=settings.billing_grace_hours)).date().isoformat()
-        amount = period_total_label(current_plan.monthly_price, subscription.billing_cycle)
         title = f"Your {current_plan.name} plan ended {ends_label}"
         subject = f"Renew {current_plan.name} - grace ends {grace_until}"
         body_lines = [
@@ -162,6 +174,16 @@ async def _deliver_reminder(db: AsyncSession, subscription: Subscription, offset
                 f"Your {current_plan.name} plan ends on {ends_label} and you've scheduled a switch to {next_plan.name}.",
                 f"Renew {next_plan.name} for ${amount} ({cycle}) so the switch happens without interruption.",
             ]
+    # Only explain a price difference when there is one; repeating "unchanged"
+    # on every reminder is noise for the common case.
+    price_line = (
+        f"Your renewal price changes from ${current_amount} to ${amount} ({cycle})."
+        if Decimal(current_amount) != Decimal(amount)
+        else None
+    )
+    if price_line:
+        subject = f"{subject} (was ${current_amount})"
+        body_lines.append(price_line)
     warning = await _capacity_warning(db, company.id, current_plan if ended else next_plan)
     if warning:
         body_lines.append(warning)
@@ -171,7 +193,8 @@ async def _deliver_reminder(db: AsyncSession, subscription: Subscription, offset
     # horizon), which is why the link carries intent rather than a payment.
     renew_plan_code = current_plan.code if ended else next_code
     renew_path = f"billing?renew={renew_plan_code}&cycle={subscription.billing_cycle}&pay=1"
-    await _notify_owners(db, company.id, title, " ".join(body_lines[:2]), link=renew_path)
+    summary = " ".join(body_lines[:3] if price_line else body_lines[:2])
+    await _notify_owners(db, company.id, title, summary, link=renew_path)
 
     owners = (
         await db.execute(
@@ -181,7 +204,7 @@ async def _deliver_reminder(db: AsyncSession, subscription: Subscription, offset
         )
     ).scalars().all()
     facts = [
-        ["Plan", escape(next_plan.name)],
+        ["Plan", escape(current_plan.name if ended else next_plan.name)],
         ["Renewal", f"${escape(str(amount))} / {escape(cycle)}"],
         ["Grace ends" if ended else "Period ends", escape(grace_until if ended else ends_label)],
     ]
