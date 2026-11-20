@@ -317,7 +317,7 @@ CREATE TABLE analytics_events (
   occurred_at   timestamptz NOT NULL,
   received_at   timestamptz NOT NULL DEFAULT now(),
   event_id      uuid NOT NULL,          -- client-generated; dedupes retries
-  session_id    uuid NOT NULL,
+  session_id    uuid NULL,              -- null for server/webhook milestones
   anonymous_id  uuid NOT NULL,
   user_id       uuid NULL,
   company_id    uuid NULL,
@@ -695,8 +695,9 @@ async def emit(
 Rules:
 
 - Max 100 events/request, 64 KB body, 4 KB/event properties.
-- 204 on success (no echo), 400 on malformed, 429 with `Retry-After` beyond
-  `600 events/min/session` or `10,000/min/IP` (sized for unsampled click
+- **202** with `{"accepted": n, "dropped": n}` on success (counts are useful when
+  a client drifts from the registry), 400 on malformed, 429 with `Retry-After`
+  beyond `600 events/min/session` or `10,000/min/IP` (sized for unsampled click
   capture; a normal session emits far less).
 - `occurred_at` more than 7 days in the future or 30 days in the past is
   clamped; the original is kept in `context.skew_ms`.
