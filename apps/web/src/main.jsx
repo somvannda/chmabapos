@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import { ThemeProvider } from "./components/ui";
+import { analytics } from "./lib/analytics";
 import "./styles.css";
 
 class AppErrorBoundary extends React.Component {
@@ -27,8 +28,9 @@ class AppErrorBoundary extends React.Component {
   }
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(
-  <React.StrictMode>
+analytics.init();
+
+ReactDOM.createRoot(document.getElementById("root")).render(  <React.StrictMode>
     <AppErrorBoundary>
       <ThemeProvider>
         <BrowserRouter>

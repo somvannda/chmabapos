@@ -3,6 +3,7 @@ import { ArrowRight, Check, ChevronDown, ChevronLeft, Store } from "lucide-react
 import { Logo, ThemeToggle, Badge, Field, Dropdown, Button } from "../components/ui";
 import { BUSINESS_TYPES } from "../lib/capabilityPacks";
 import { getStoredLanguage, translate } from "../lib/i18n";
+import { analytics } from "../lib/analytics";
 import { countryOptions } from "../lib/countries";
 import { api } from "../api";
 
@@ -92,6 +93,26 @@ function Onboarding({ step, setStep, data, setData, selectedPlan, setSelectedPla
     }
   }, [recommendedCode, plans, setSelectedPlan]);
 
+  // Every step transition is a measurable event: the gap between "viewed" and
+  // "completed" is the number this whole journey exists to explain.
+  useEffect(() => {
+    const key = ONBOARDING_STEPS[step - 1] || "unknown";
+    analytics.track("onboarding.step_viewed", { step, step_key: key });
+    analytics.startStep(`onboarding.${step}`);
+  }, [step]);
+
+  const goTo = (next) => {
+    if (next > step) {
+      analytics.endStep(`onboarding.${step}`, "onboarding.step_completed", {
+        step,
+        step_key: ONBOARDING_STEPS[step - 1] || "unknown",
+      });
+    } else if (next < step) {
+      analytics.track("onboarding.step_back", { from_step: step, to_step: next });
+    }
+    setStep(next);
+  };
+
   useEffect(() => {
     if (step > 1 && !data.company) setStep(1);
   }, [step, data.company, setStep]);
@@ -135,13 +156,13 @@ function Onboarding({ step, setStep, data, setData, selectedPlan, setSelectedPla
             </div>
           </div>
           <div className={contentClassName}>
-            {step === 1 && <SetupCompany data={data} setData={setData} onNext={() => setStep(2)} />}
+            {step === 1 && <SetupCompany data={data} setData={setData} onNext={() => goTo(2)} />}
             {step === 2 && (
               <SetupQuestions
                 data={data}
                 setData={setData}
-                onBack={() => setStep(1)}
-                onNext={(next) => { setData(next); setStep(3); }}
+                onBack={() => goTo(1)}
+                onNext={(next) => { setData(next); goTo(3); }}
               />
             )}
             {step === 3 && (
@@ -154,7 +175,7 @@ function Onboarding({ step, setStep, data, setData, selectedPlan, setSelectedPla
                 setSelectedPlan={setSelectedPlan}
                 submitting={loading}
                 submitError={error}
-                onBack={() => setStep(2)}
+                onBack={() => goTo(2)}
                 onNext={() => onFinish({ ...data, plan_code: selectedPlan })}
               />
             )}
@@ -280,7 +301,7 @@ function SetupPlan({ plans, loading, error, onRetry, selectedPlan, setSelectedPl
         <>
           <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {plans.map((plan) => (
-              <PlanOption key={plan.code} plan={plan} selected={selectedPlan === plan.code} onSelect={() => setSelectedPlan(plan.code)} />
+              <PlanOption key={plan.code} plan={plan} selected={selectedPlan === plan.code} onSelect={() => { analytics.track("onboarding.plan_selected", { plan_code: plan.code, recommended: Boolean(plan.recommended) }); setSelectedPlan(plan.code); }} />
             ))}
           </div>
           <div className="mt-8 flex items-center gap-3">
