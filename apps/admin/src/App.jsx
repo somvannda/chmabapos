@@ -5874,9 +5874,87 @@ function JourneyStageDrilldown({ token, stage, days, onClose }) {
   </Modal>;
 }
 
+const JOURNEY_SEVERITY_TONE = { high: "red", medium: "yellow", low: "neutral" };
+
+function JourneyDigestCard({ digest, digestError, days, running, deciding, note, onNote, onRun, onDecide, stageLabel }) {
+  const findings = digest?.payload?.findings || [];
+  const validator = digest?.validator;
+  const validatorBadge = validator === "fallback"
+    ? <Badge tone="yellow" dot>rules-based (AI unavailable)</Badge>
+    : validator === "insufficient"
+      ? <Badge tone="neutral" dot>Not enough evidence yet</Badge>
+      : validator === "repaired"
+        ? <Badge tone="violet" dot>AI-written, repaired after review</Badge>
+        : <Badge tone="violet" dot>AI-written, cited</Badge>;
+  const evidenceById = new Map((digest?.evidence || []).map((item) => [item.id, item]));
+  return <section className="mt-5 rounded-2xl border border-[#e9e9ef] bg-white p-5">
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="text-sm font-extrabold text-[#3d3e47]">AI digest</h2>
+          {digest ? validatorBadge : null}
+          {digest && digest.severity ? <Badge tone={JOURNEY_SEVERITY_TONE[digest.severity] || "neutral"}>{digest.severity} severity</Badge> : null}
+        </div>
+        <p className="mt-1 text-[11px] text-[#92939d]">Numbers are computed by the funnel and the stage drilldown. The model only ranks and explains them, and every finding cites evidence. Nothing is applied automatically.</p>
+      </div>
+      <Button size="sm" onClick={onRun} disabled={running} className="lg:shrink-0">{running ? "Generating..." : "Run digest"}</Button>
+    </div>
+    {digestError ? <p className="mt-3 rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b]">{digestError}</p> : null}
+    {!digest ? <div className="mt-4 rounded-xl border border-dashed border-[#e4e4eb] bg-[#fafafd] px-4 py-6 text-center">
+      <p className="text-xs font-bold text-[#5b5c66]">No digest for this window yet</p>
+      <p className="mx-auto mt-1 max-w-[560px] text-[11px] leading-5 text-[#92939d]">A digest needs at least 20 telemetry events and one workspace created in the last {days} days. Run one to rank the friction; if the window is quiet it will say so instead of inventing a problem.</p>
+    </div> : <>
+      <div className="mt-4 rounded-xl bg-[#fafafd] px-4 py-3.5">
+        <p className="text-base font-extrabold tracking-[-.02em] text-[#202128]">{digest.title}</p>
+        <p className="mt-1 text-[11px] leading-5 text-[#777883]">{digest.summary}</p>
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-[#a0a1aa]">
+          <span>{new Date(digest.created_at).toLocaleString()}</span>
+          <span>{digest.window_days}-day window</span>
+          <span>{digest.provider ? `${digest.provider} / ${digest.model || "default model"}` : "deterministic rules"}</span>
+          <span className="font-mono">{digest.prompt_version}</span>
+        </div>
+      </div>
+      {validator === "insufficient" ? <p className="mt-4 rounded-xl border border-[#f0e0b8] bg-[#fffdf5] px-3 py-2.5 text-xs text-[#8a6a1f]">{digest.payload?.reason || "Not enough evidence yet. The digest will start ranking once the cohort and telemetry have enough volume."}</p> : findings.length === 0 ? <p className="mt-4 rounded-xl border border-[#e9e9ef] bg-white px-3 py-4 text-center text-xs text-[#92939d]">No material friction found in this window. That is the honest answer, not a missing run.</p> : <div className="mt-4 space-y-2.5">
+        {findings.map((finding, index) => <article key={`${index}-${finding.stage}`} className="rounded-xl border border-[#f0f0f3] px-3.5 py-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone={JOURNEY_SEVERITY_TONE[finding.severity] || "neutral"}>{finding.severity}</Badge>
+            <span className="text-xs font-extrabold text-[#3d3e47]">{stageLabel(finding.stage)}</span>
+            <span className="font-mono text-[10px] text-[#a0a1aa]">{finding.stage}</span>
+            {finding.confidence != null ? <span className="ml-auto text-[10px] text-[#a0a1aa]">confidence {Math.round(finding.confidence * 100)}%</span> : null}
+          </div>
+          <p className="mt-1.5 text-[11px] leading-5 text-[#4f5059]">{finding.claim}</p>
+          <div className="mt-2 flex flex-wrap gap-1.5">{(finding.evidence || []).map((id) => {
+            const item = evidenceById.get(id);
+            return <span key={id} title={item ? `${id} = ${item.value} ${item.unit}` : id} className="rounded-md bg-[#f5f5f8] px-2 py-1 font-mono text-[10px] text-[#686974]">{id}</span>;
+          })}</div>
+        </article>)}
+      </div>}
+      {digest.payload?.recommended_focus ? <p className="mt-3 text-[11px] text-[#5b5c66]"><span className="font-bold">Recommended focus:</span> {stageLabel(digest.payload.recommended_focus)} <span className="font-mono text-[10px] text-[#a0a1aa]">({digest.payload.recommended_focus})</span></p> : null}
+      <div className="mt-4 border-t border-[#f0f0f3] pt-3">
+        {digest.decision ? <div className="flex flex-wrap items-center gap-2 text-[11px] text-[#777883]">
+          <Badge tone={digest.decision === "accepted" ? "green" : "red"} dot>{digest.decision}</Badge>
+          <span>Recorded {new Date(digest.decided_at).toLocaleString()}.</span>
+          {digest.decision_note ? <span className="text-[#5b5c66]">"{digest.decision_note}"</span> : null}
+        </div> : <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <input value={note} onChange={(event) => onNote(event.target.value)} maxLength={500} placeholder="Optional note for the record" aria-label="Decision note" className="h-9 min-w-0 flex-1 rounded-lg border border-[#e4e4eb] bg-white px-3 text-xs text-[#3d3e47] outline-none focus:border-[#6957f5]" />
+          <div className="flex shrink-0 gap-2">
+            <Button size="sm" variant="outline" onClick={() => onDecide("rejected")} disabled={deciding}>Reject</Button>
+            <Button size="sm" onClick={() => onDecide("accepted")} disabled={deciding}>{deciding ? "Saving..." : "Accept"}</Button>
+          </div>
+        </div>}
+      </div>
+    </>}
+  </section>;
+}
+
 function AdminJourneys({ token }) {
   const [data, setData] = useState(null);
   const [health, setHealth] = useState(null);
+  const [digest, setDigest] = useState(null);
+  const [digestError, setDigestError] = useState("");
+  const [digestRunning, setDigestRunning] = useState(false);
+  const [digestDeciding, setDigestDeciding] = useState(false);
+  const [digestNote, setDigestNote] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [days, setDays] = useState("30");
@@ -5884,20 +5962,52 @@ function AdminJourneys({ token }) {
   const load = async () => {
     setLoading(true);
     setError("");
+    setDigestError("");
     try {
-      const [funnel, ingest] = await Promise.all([
+      const [funnel, ingest, latestDigest] = await Promise.all([
         api.adminJourneyFunnel(token, days || undefined),
         api.adminJourneyHealth(token, 24).catch(() => null),
+        api.adminJourneyDigest(token, Number(days) || 30).catch((requestError) => {
+          setDigestError(requestError.message || "Could not load the AI digest");
+          return null;
+        }),
       ]);
       setData(funnel);
       setHealth(ingest);
+      setDigest(latestDigest);
     } catch (requestError) {
       setError(requestError.message || "Could not load the activation journey");
     } finally {
       setLoading(false);
     }
   };
-  useEffect(() => { load(); }, [token, days]);
+  useEffect(() => { setDigestNote(""); load(); }, [token, days]);
+  const runDigest = async () => {
+    setDigestRunning(true);
+    setDigestError("");
+    try {
+      setDigest(await api.adminRunJourneyDigest(token, Number(days) || 30));
+      setDigestNote("");
+    } catch (requestError) {
+      setDigestError(requestError.message || "Could not run the digest");
+    } finally {
+      setDigestRunning(false);
+    }
+  };
+  const decideDigest = async (decision) => {
+    if (!digest) return;
+    setDigestDeciding(true);
+    setDigestError("");
+    try {
+      setDigest(await api.adminJourneyDigestDecision(token, digest.id, { decision, note: digestNote.trim() || undefined }));
+      setDigestNote("");
+    } catch (requestError) {
+      setDigestError(requestError.message || "Could not save the decision");
+    } finally {
+      setDigestDeciding(false);
+    }
+  };
+  const stageLabel = (key) => data?.stages?.find((stage) => stage.key === key)?.label || key;
   const pct = (value) => (value == null ? "-" : `${Math.round(value * 100)}%`);
   const asDuration = (seconds) => {
     if (seconds == null) return "-";
@@ -5927,6 +6037,18 @@ function AdminJourneys({ token }) {
         <span>{health.partitions} partition{health.partitions === 1 ? "" : "s"}</span>
         <span>{health.lag_seconds == null ? "No events yet" : `newest event ${asDuration(health.lag_seconds)} ago`}</span>
       </div>}
+      <JourneyDigestCard
+        digest={digest}
+        digestError={digestError}
+        days={days}
+        running={digestRunning}
+        deciding={digestDeciding}
+        note={digestNote}
+        onNote={setDigestNote}
+        onRun={runDigest}
+        onDecide={decideDigest}
+        stageLabel={stageLabel}
+      />
       <div className="mt-5 overflow-hidden rounded-2xl border border-[#e9e9ef] bg-white">
         {data.stages.map((stage) => {
           const explainable = Boolean(JOURNEY_STAGE_ROUTES[stage.key]);

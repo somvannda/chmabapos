@@ -30,6 +30,7 @@ from app.services.orders import transaction_usage
 from app.services import health as health_service
 from app.services.activation import build_funnel as build_activation_funnel
 from app.services.activation import build_health as build_activation_health
+from app.services.activation_ai import ActivationAIDisabled, decide_digest, generate_digest, latest_digest
 from app.services.journey_diagnostics import UnknownJourneyStage
 from app.services.journey_diagnostics import build_session_timeline as build_journey_timeline
 from app.services.journey_diagnostics import build_stage_sessions as build_journey_sessions
@@ -51,6 +52,8 @@ from app.schemas import (
     AdminFunnelEmailRead,
     AdminFunnelRead,
     AdminFunnelStageRead,
+    AdminJourneyDigestDecisionRequest,
+    AdminJourneyDigestRead,
     AdminJourneyFunnelRead,
     AdminJourneyHealthRead,
     AdminJourneySessionsRead,
@@ -530,6 +533,64 @@ async def journey_session_timeline(
     if payload is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
     return AdminJourneyTimelineRead(**payload)
+
+
+@router.post("/journeys/digest/run", response_model=AdminJourneyDigestRead)
+async def run_journey_digest(
+    _: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+    days: int = Query(default=30, ge=1, le=3650),
+) -> AdminJourneyDigestRead:
+    """Generate and store one cited friction digest.
+
+    The provider only ranks and explains deterministic evidence. A missing AI
+    configuration is a 400 the operator can fix, never a 500; the kill switch is
+    a 503; a provider failure is stored as a rules-based fallback (200), because
+    the deterministic digest is still useful.
+    """
+    try:
+        insight = await generate_digest(db, days=days)
+    except ActivationAIDisabled as error:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(error)
+        ) from error
+    except ai_service.AINotConfiguredError as error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Configure AI in Settings > AI writing",
+        ) from error
+    return AdminJourneyDigestRead.model_validate(insight)
+
+
+@router.get("/journeys/digest", response_model=AdminJourneyDigestRead | None)
+async def journey_latest_digest(
+    _: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+    days: int = Query(default=30, ge=1, le=3650),
+) -> AdminJourneyDigestRead | None:
+    """The latest stored digest for this window, or ``null`` before the first run."""
+    insight = await latest_digest(db, days=days)
+    return AdminJourneyDigestRead.model_validate(insight) if insight is not None else None
+
+
+@router.patch("/journeys/digest/{insight_id}/decision", response_model=AdminJourneyDigestRead)
+async def decide_journey_digest(
+    insight_id: UUID,
+    payload: AdminJourneyDigestDecisionRequest,
+    actor: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+) -> AdminJourneyDigestRead:
+    """Record a human accept/reject. Nothing is applied automatically (FR-A10)."""
+    insight = await decide_digest(
+        db,
+        insight_id=insight_id,
+        decision=payload.decision,
+        note=payload.note,
+        decided_by=actor.id,
+    )
+    if insight is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Digest not found")
+    return AdminJourneyDigestRead.model_validate(insight)
 
 
 @router.get("/sales-analytics", response_model=AdminSalesAnalyticsRead)

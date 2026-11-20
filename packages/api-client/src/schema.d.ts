@@ -4741,6 +4741,71 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admin/journeys/digest/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Journey Digest
+         * @description Generate and store one cited friction digest.
+         *
+         *     The provider only ranks and explains deterministic evidence. A missing AI
+         *     configuration is a 400 the operator can fix, never a 500; the kill switch is
+         *     a 503; a provider failure is stored as a rules-based fallback (200), because
+         *     the deterministic digest is still useful.
+         */
+        post: operations["run_journey_digest_api_v1_admin_journeys_digest_run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/journeys/digest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Journey Latest Digest
+         * @description The latest stored digest for this window, or ``null`` before the first run.
+         */
+        get: operations["journey_latest_digest_api_v1_admin_journeys_digest_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/journeys/digest/{insight_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Decide Journey Digest
+         * @description Record a human accept/reject. Nothing is applied automatically (FR-A10).
+         */
+        patch: operations["decide_journey_digest_api_v1_admin_journeys_digest__insight_id__decision_patch"];
+        trace?: never;
+    };
     "/api/v1/admin/sales-analytics": {
         parameters: {
             query?: never;
@@ -7506,6 +7571,84 @@ export interface components {
              * @default 0
              */
             count: number;
+        };
+        /**
+         * AdminJourneyDigestDecisionRequest
+         * @description A human verdict on a digest. The note is optional but stored verbatim.
+         */
+        AdminJourneyDigestDecisionRequest: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "accepted" | "rejected";
+            /** Note */
+            note?: string | null;
+        };
+        /**
+         * AdminJourneyDigestRead
+         * @description One stored AI digest, with the evidence it cited and the human decision.
+         *
+         *     ``validator`` is the trust label the UI shows: ``fallback`` means the model
+         *     was unavailable or unsupported, so the text came from deterministic rules.
+         */
+        AdminJourneyDigestRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Kind
+             * @default digest
+             */
+            kind: string;
+            /** Window Days */
+            window_days: number;
+            /** Stage Key */
+            stage_key?: string | null;
+            /** Title */
+            title: string;
+            /** Summary */
+            summary: string;
+            /**
+             * Severity
+             * @default low
+             */
+            severity: string;
+            /** Confidence */
+            confidence?: number | null;
+            /** Evidence */
+            evidence?: {
+                [key: string]: unknown;
+            }[];
+            /** Payload */
+            payload?: {
+                [key: string]: unknown;
+            };
+            /** Prompt Version */
+            prompt_version: string;
+            /** Provider */
+            provider?: string | null;
+            /** Model */
+            model?: string | null;
+            /** Input Hash */
+            input_hash: string;
+            /** Validator */
+            validator: string;
+            /** Decision */
+            decision?: ("accepted" | "rejected") | null;
+            /** Decided By */
+            decided_by?: string | null;
+            /** Decided At */
+            decided_at?: string | null;
+            /** Decision Note */
+            decision_note?: string | null;
         };
         /**
          * AdminJourneyDwellRead
@@ -26830,6 +26973,103 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminJourneyTimelineRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_journey_digest_api_v1_admin_journeys_digest_run_post: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminJourneyDigestRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    journey_latest_digest_api_v1_admin_journeys_digest_get: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminJourneyDigestRead"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decide_journey_digest_api_v1_admin_journeys_digest__insight_id__decision_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                insight_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminJourneyDigestDecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminJourneyDigestRead"];
                 };
             };
             /** @description Validation Error */
