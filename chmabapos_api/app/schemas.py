@@ -3297,6 +3297,34 @@ class AdminFunnelRead(APIModel):
     email: list[AdminFunnelEmailRead] = Field(default_factory=list)
 
 
+class AdminJourneyStageRead(APIModel):
+    """One stage of the cohort activation funnel.
+
+    ``authoritative`` is False for stages only the browser can observe (opening
+    the setup wizard). Those explain the journey; they are never the number a
+    conversion rate is based on.
+    """
+
+    key: str
+    label: str
+    count: int = 0
+    authoritative: bool = True
+    from_previous: float | None = None
+    from_start: float | None = None
+    median_seconds: float | None = None
+    p90_seconds: float | None = None
+    stalled: int = 0
+
+
+class AdminJourneyFunnelRead(APIModel):
+    """Companies created in the window and how far that cohort progressed."""
+
+    window_days: int
+    cohort: str = "companies"
+    total: int = 0
+    stages: list[AdminJourneyStageRead] = Field(default_factory=list)
+
+
 class AdminSalesSummaryRead(APIModel):
     orders_total: int = 0
     orders_window: int = 0

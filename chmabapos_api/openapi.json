@@ -16720,6 +16720,57 @@
         }
       }
     },
+    "/api/v1/admin/journeys/funnel": {
+      "get": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Activation Journey Funnel",
+        "description": "The cohort funnel: one signup cohort, read forward.\n\nUnlike ``/funnel``, every stage counts the same companies, so a conversion\nrate cannot exceed 100% or mix denominators. Stages a browser alone can see\nare marked ``authoritative: false``.",
+        "operationId": "activation_journey_funnel_api_v1_admin_journeys_funnel_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 3650,
+              "minimum": 1,
+              "default": 30,
+              "title": "Days"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminJourneyFunnelRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/sales-analytics": {
       "get": {
         "tags": [
@@ -24852,6 +24903,115 @@
         },
         "type": "object",
         "title": "AdminInventorySummaryRead"
+      },
+      "AdminJourneyFunnelRead": {
+        "properties": {
+          "window_days": {
+            "type": "integer",
+            "title": "Window Days"
+          },
+          "cohort": {
+            "type": "string",
+            "title": "Cohort",
+            "default": "companies"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "default": 0
+          },
+          "stages": {
+            "items": {
+              "$ref": "#/components/schemas/AdminJourneyStageRead"
+            },
+            "type": "array",
+            "title": "Stages"
+          }
+        },
+        "type": "object",
+        "required": [
+          "window_days"
+        ],
+        "title": "AdminJourneyFunnelRead",
+        "description": "Companies created in the window and how far that cohort progressed."
+      },
+      "AdminJourneyStageRead": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "default": 0
+          },
+          "authoritative": {
+            "type": "boolean",
+            "title": "Authoritative",
+            "default": true
+          },
+          "from_previous": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Previous"
+          },
+          "from_start": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Start"
+          },
+          "median_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Median Seconds"
+          },
+          "p90_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "P90 Seconds"
+          },
+          "stalled": {
+            "type": "integer",
+            "title": "Stalled",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "label"
+        ],
+        "title": "AdminJourneyStageRead",
+        "description": "One stage of the cohort activation funnel.\n\n``authoritative`` is False for stages only the browser can observe (opening\nthe setup wizard). Those explain the journey; they are never the number a\nconversion rate is based on."
       },
       "AdminMembershipRead": {
         "properties": {
