@@ -17176,6 +17176,251 @@
         }
       }
     },
+    "/api/v1/admin/journeys/step-review/run": {
+      "post": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Run Journey Step Review",
+        "description": "Generate and store one cited step review.\n\nThe numbers come from the deterministic transition matrix and step metrics;\nthe provider only writes the narrative and a draft experiment for each\nproposal. Under 30 sessions the review is stored as insufficient and no\nprovider is called. A missing AI configuration is a 400 the operator can fix;\nthe kill switch is a 503; a provider failure is stored as a rules-based\nfallback (200), because the ranking is still useful.",
+        "operationId": "run_journey_step_review_api_v1_admin_journeys_step_review_run_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 3650,
+              "minimum": 1,
+              "default": 30,
+              "title": "Days"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminJourneyStepReviewRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/journeys/step-review": {
+      "get": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Journey Latest Step Review",
+        "description": "The latest stored step review for this window, or ``null`` before the first run.",
+        "operationId": "journey_latest_step_review_api_v1_admin_journeys_step_review_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 3650,
+              "minimum": 1,
+              "default": 30,
+              "title": "Days"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/AdminJourneyStepReviewRead"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Journey Latest Step Review Api V1 Admin Journeys Step Review Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/journeys/step-review/{insight_id}/decision": {
+      "patch": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Decide Journey Step Review",
+        "description": "Record a human accept/reject. Nothing is applied automatically (FR-A10).",
+        "operationId": "decide_journey_step_review_api_v1_admin_journeys_step_review__insight_id__decision_patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "insight_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Insight Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminJourneyStepReviewDecisionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminJourneyStepReviewRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/journeys/experiments": {
+      "get": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "List Journey Experiments",
+        "description": "Draft experiments, newest first. This feature never starts or ships one.",
+        "operationId": "list_journey_experiments_api_v1_admin_journeys_experiments_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AdminActivationExperimentRead"
+                  },
+                  "type": "array",
+                  "title": "Response List Journey Experiments Api V1 Admin Journeys Experiments Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [
+          "platform-admin"
+        ],
+        "summary": "Create Journey Experiment",
+        "description": "Create a *draft* experiment from an accepted step-review proposal.\n\nThere is no traffic split, no flag and no copy change: a draft is a record a\nhuman works from. Duplicate creation for one proposal is a 409.",
+        "operationId": "create_journey_experiment_api_v1_admin_journeys_experiments_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminActivationExperimentCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminActivationExperimentRead"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/admin/sales-analytics": {
       "get": {
         "tags": [
@@ -23662,6 +23907,129 @@
         "title": "AITestRead",
         "description": "Outcome of a small probe request against the configured AI provider."
       },
+      "AdminActivationExperimentCreateRequest": {
+        "properties": {
+          "insight_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Insight Id"
+          },
+          "proposal_index": {
+            "type": "integer",
+            "maximum": 4.0,
+            "minimum": 0.0,
+            "title": "Proposal Index"
+          }
+        },
+        "type": "object",
+        "required": [
+          "insight_id",
+          "proposal_index"
+        ],
+        "title": "AdminActivationExperimentCreateRequest",
+        "description": "Create one draft from an accepted proposal. Index is zero-based."
+      },
+      "AdminActivationExperimentRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "hypothesis": {
+            "type": "string",
+            "title": "Hypothesis"
+          },
+          "stage_key": {
+            "type": "string",
+            "title": "Stage Key"
+          },
+          "primary_metric": {
+            "type": "string",
+            "title": "Primary Metric"
+          },
+          "guardrails": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Guardrails"
+          },
+          "variant": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Variant"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "default": "draft"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "ended_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended At"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          },
+          "insight_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Insight Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "created_at",
+          "hypothesis",
+          "stage_key",
+          "primary_metric"
+        ],
+        "title": "AdminActivationExperimentRead",
+        "description": "A draft activation experiment. ``status`` is always ``draft`` when created here."
+      },
       "AdminActivityRead": {
         "properties": {
           "id": {
@@ -25914,6 +26282,204 @@
         ],
         "title": "AdminJourneyStageRead",
         "description": "One stage of the cohort activation funnel.\n\n``authoritative`` is False for stages only the browser can observe (opening\nthe setup wizard). Those explain the journey; they are never the number a\nconversion rate is based on."
+      },
+      "AdminJourneyStepReviewDecisionRequest": {
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "rejected"
+            ],
+            "title": "Decision"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "decision"
+        ],
+        "title": "AdminJourneyStepReviewDecisionRequest",
+        "description": "A human verdict on a step review. The note is optional but stored verbatim."
+      },
+      "AdminJourneyStepReviewRead": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind",
+            "default": "step_review"
+          },
+          "window_days": {
+            "type": "integer",
+            "title": "Window Days"
+          },
+          "stage_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stage Key"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "severity": {
+            "type": "string",
+            "title": "Severity",
+            "default": "low"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "evidence": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Evidence"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Payload"
+          },
+          "prompt_version": {
+            "type": "string",
+            "title": "Prompt Version"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "input_hash": {
+            "type": "string",
+            "title": "Input Hash"
+          },
+          "validator": {
+            "type": "string",
+            "title": "Validator"
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "accepted",
+                  "rejected"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision"
+          },
+          "decided_by": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided By"
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At"
+          },
+          "decision_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision Note"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "created_at",
+          "window_days",
+          "title",
+          "summary",
+          "prompt_version",
+          "input_hash",
+          "validator"
+        ],
+        "title": "AdminJourneyStepReviewRead",
+        "description": "One stored step review: deterministic evidence plus cited proposals.\n\n``validator`` is the trust label: ``fallback`` means the model was\nunavailable or unsupported, so the proposals came from deterministic rules.\nAn accepted review can create a draft experiment; nothing is applied here."
       },
       "AdminJourneySurveyAnswerRead": {
         "properties": {

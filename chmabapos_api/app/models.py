@@ -2432,3 +2432,34 @@ class AIRun(Base):
     cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
     latency_ms: Mapped[int] = mapped_column(Integer, default=0)
     outcome: Mapped[str] = mapped_column(String(30))
+
+
+class ActivationExperiment(Base):
+    """A proposed process change, created from an accepted step-review proposal.
+
+    Always starts as ``draft``. Nothing in this table causes a traffic split, a
+    copy change or a flag flip: it is the record a human works from, and the row
+    keeps the insight that proposed it so a later result can be read beside the
+    evidence that motivated it.
+    """
+
+    __tablename__ = "activation_experiments"
+    __table_args__ = (
+        Index("ix_activation_experiments_created_at", "created_at"),
+        Index("ix_activation_experiments_status", "status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    hypothesis: Mapped[str] = mapped_column(Text)
+    stage_key: Mapped[str] = mapped_column(String(80))
+    primary_metric: Mapped[str] = mapped_column(String(80))
+    guardrails: Mapped[list] = mapped_column(JSONB, default=list)
+    variant: Mapped[dict] = mapped_column(JSONB, default=dict)
+    status: Mapped[str] = mapped_column(String(20), default="draft")
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    result: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    insight_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("ai_insights.id", ondelete="SET NULL"), nullable=True
+    )

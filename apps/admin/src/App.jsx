@@ -5875,6 +5875,104 @@ function JourneyStageDrilldown({ token, stage, days, onClose }) {
 }
 
 const JOURNEY_SEVERITY_TONE = { high: "red", medium: "yellow", low: "neutral" };
+const STEP_ACTION_TONE = { merge: "violet", remove: "red", reorder: "yellow", keep: "green" };
+const STEP_LABELS = {
+  "setup.company": "Company details",
+  "setup.questions": "A few quick questions",
+  "setup.plan": "Choose your plan",
+  products: "Create a product",
+};
+
+function StepReviewCard({ review, reviewError, days, running, deciding, note, onNote, onRun, onDecide, experiments, creating, onCreateExperiment }) {
+  const proposals = review?.payload?.proposals || [];
+  const validator = review?.validator;
+  const validatorBadge = validator === "fallback"
+    ? <Badge tone="yellow" dot>rules-based (AI unavailable)</Badge>
+    : validator === "insufficient"
+      ? <Badge tone="neutral" dot>Not enough evidence yet</Badge>
+      : validator === "repaired"
+        ? <Badge tone="violet" dot>AI-written, repaired after review</Badge>
+        : <Badge tone="violet" dot>AI-written, cited</Badge>;
+  const evidenceById = new Map((review?.evidence || []).map((item) => [item.id, item]));
+  const drafts = new Map((experiments || [])
+    .filter((experiment) => experiment.insight_id === review?.id)
+    .map((experiment) => [Number(experiment.variant?.proposal_index), experiment]));
+  return <section className="mt-5 rounded-2xl border border-[#e9e9ef] bg-white p-5">
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="text-sm font-extrabold text-[#3d3e47]">Step review</h2>
+          {review ? validatorBadge : null}
+          {review?.decision ? <Badge tone={review.decision === "accepted" ? "green" : "red"} dot>{review.decision}</Badge> : null}
+        </div>
+        <p className="mt-1 max-w-[720px] text-[11px] leading-5 text-[#92939d]">Route transitions and step metrics are computed from telemetry, by session. The model may only rank and explain them, and every proposal cites evidence. An accepted proposal can open a draft experiment; nothing here changes the product.</p>
+      </div>
+      <Button size="sm" onClick={onRun} disabled={running} className="lg:shrink-0">{running ? "Reviewing..." : "Run step review"}</Button>
+    </div>
+    {reviewError ? <p className="mt-3 rounded-xl border border-[#ffd7d2] bg-[#fff5f3] px-3 py-2.5 text-xs text-[#c2564b]">{reviewError}</p> : null}
+    {!review ? <div className="mt-4 rounded-xl border border-dashed border-[#e4e4eb] bg-[#fafafd] px-4 py-6 text-center">
+      <p className="text-xs font-bold text-[#5b5c66]">No step review for this window yet</p>
+      <p className="mx-auto mt-1 max-w-[560px] text-[11px] leading-5 text-[#92939d]">A review needs at least 30 sessions of route activity in the last {days} days. Below that it reports the shortfall instead of guessing, and the provider is not called.</p>
+    </div> : <>
+      <div className="mt-4 rounded-xl bg-[#fafafd] px-4 py-3.5">
+        <p className="text-base font-extrabold tracking-[-.02em] text-[#202128]">{review.title}</p>
+        <p className="mt-1 text-[11px] leading-5 text-[#777883]">{review.summary}</p>
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-[#a0a1aa]">
+          <span>{new Date(review.created_at).toLocaleString()}</span>
+          <span>{review.window_days}-day window</span>
+          <span>{review.provider ? `${review.provider} / ${review.model || "default model"}` : "deterministic rules"}</span>
+          <span className="font-mono">{review.prompt_version}</span>
+        </div>
+      </div>
+      {validator === "insufficient" ? <p className="mt-4 rounded-xl border border-[#f0e0b8] bg-[#fffdf5] px-3 py-2.5 text-xs text-[#8a6a1f]">{review.payload?.reason || "Not enough evidence yet. A step review needs at least 30 sessions in the window."}</p> : proposals.length === 0 ? <p className="mt-4 rounded-xl border border-[#e9e9ef] bg-white px-3 py-4 text-center text-xs text-[#92939d]">No tracked step was reached in this window. That is the honest answer, not a missing run.</p> : <div className="mt-4 space-y-2.5">
+        {proposals.map((proposal, index) => {
+          const draft = drafts.get(index);
+          return <article key={`${index}-${proposal.step_key}`} className="rounded-xl border border-[#f0f0f3] px-3.5 py-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone={STEP_ACTION_TONE[proposal.action] || "neutral"} dot>{proposal.action}</Badge>
+              <span className="text-xs font-extrabold text-[#3d3e47]">{STEP_LABELS[proposal.step_key] || proposal.step_key}</span>
+              <span className="font-mono text-[10px] text-[#a0a1aa]">{proposal.step_key}</span>
+              {proposal.confidence != null ? <span className="text-[10px] text-[#a0a1aa]">confidence {Math.round(proposal.confidence * 100)}%</span> : null}
+              {draft ? <Badge tone="green" dot>draft created</Badge> : null}
+            </div>
+            <p className="mt-1.5 text-[11px] leading-5 text-[#4f5059]">{proposal.rationale}</p>
+            <div className="mt-2 flex flex-wrap gap-1.5">{(proposal.evidence || []).map((id) => {
+              const item = evidenceById.get(id);
+              return <span key={id} title={item ? `${id} = ${item.value} ${item.unit}` : id} className="rounded-md bg-[#f5f5f8] px-2 py-1 font-mono text-[10px] text-[#686974]">{id}</span>;
+            })}</div>
+            <div className="mt-2 grid gap-1 text-[10px] leading-5 text-[#777883] sm:grid-cols-2">
+              <p><span className="font-bold text-[#5b5c66]">Risk:</span> {proposal.risk}</p>
+              <p><span className="font-bold text-[#5b5c66]">Estimated effect:</span> {proposal.estimated_effect}</p>
+            </div>
+            {proposal.experiment ? <div className="mt-2 rounded-lg border border-[#eef0f6] bg-[#fbfbfe] px-2.5 py-2 text-[10px] leading-5 text-[#686974]">
+              <p><span className="font-bold text-[#5b5c66]">Experiment:</span> {proposal.experiment.hypothesis}</p>
+              <p className="mt-0.5">Primary metric <span className="font-mono">{proposal.experiment.primary_metric}</span>{proposal.experiment.sample ? ` · ${proposal.experiment.sample}` : ""}</p>
+              {proposal.experiment.guardrails?.length ? <p className="mt-0.5">Guardrails: {proposal.experiment.guardrails.join(", ")}</p> : null}
+            </div> : null}
+            {review.decision === "accepted" ? <div className="mt-2 flex justify-end">
+              {draft
+                ? <span className="text-[10px] text-[#777883]">Draft created {new Date(draft.created_at).toLocaleString()}.</span>
+                : <Button size="sm" variant="outline" onClick={() => onCreateExperiment(index)} disabled={creating === index}>{creating === index ? "Creating..." : "Create experiment draft"}</Button>}
+            </div> : null}
+          </article>;
+        })}
+      </div>}
+      <div className="mt-4 border-t border-[#f0f0f3] pt-3">
+        {review.decision ? <div className="flex flex-wrap items-center gap-2 text-[11px] text-[#777883]">
+          <Badge tone={review.decision === "accepted" ? "green" : "red"} dot>{review.decision}</Badge>
+          <span>Recorded {new Date(review.decided_at).toLocaleString()}.</span>
+          {review.decision_note ? <span className="text-[#5b5c66]">"{review.decision_note}"</span> : null}
+        </div> : <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <input value={note} onChange={(event) => onNote(event.target.value)} maxLength={500} placeholder="Optional note for the record" aria-label="Step review decision note" className="h-9 min-w-0 flex-1 rounded-lg border border-[#e4e4eb] bg-white px-3 text-xs text-[#3d3e47] outline-none focus:border-[#6957f5]" />
+          <div className="flex shrink-0 gap-2">
+            <Button size="sm" variant="outline" onClick={() => onDecide("rejected")} disabled={deciding}>Reject</Button>
+            <Button size="sm" onClick={() => onDecide("accepted")} disabled={deciding}>{deciding ? "Saving..." : "Accept"}</Button>
+          </div>
+        </div>}
+      </div>
+    </>}
+  </section>;
+}
 
 function JourneyDigestCard({ digest, digestError, days, running, deciding, note, onNote, onRun, onDecide, stageLabel }) {
   const findings = digest?.payload?.findings || [];
@@ -5955,6 +6053,13 @@ function AdminJourneys({ token }) {
   const [digestRunning, setDigestRunning] = useState(false);
   const [digestDeciding, setDigestDeciding] = useState(false);
   const [digestNote, setDigestNote] = useState("");
+  const [stepReview, setStepReview] = useState(null);
+  const [stepReviewError, setStepReviewError] = useState("");
+  const [stepReviewRunning, setStepReviewRunning] = useState(false);
+  const [stepReviewDeciding, setStepReviewDeciding] = useState(false);
+  const [stepReviewNote, setStepReviewNote] = useState("");
+  const [experiments, setExperiments] = useState([]);
+  const [creatingExperiment, setCreatingExperiment] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [days, setDays] = useState("30");
@@ -5963,25 +6068,33 @@ function AdminJourneys({ token }) {
     setLoading(true);
     setError("");
     setDigestError("");
+    setStepReviewError("");
     try {
-      const [funnel, ingest, latestDigest] = await Promise.all([
+      const [funnel, ingest, latestDigest, latestStepReview, experimentRows] = await Promise.all([
         api.adminJourneyFunnel(token, days || undefined),
         api.adminJourneyHealth(token, 24).catch(() => null),
         api.adminJourneyDigest(token, Number(days) || 30).catch((requestError) => {
           setDigestError(requestError.message || "Could not load the AI digest");
           return null;
         }),
+        api.adminJourneyStepReview(token, Number(days) || 30).catch((requestError) => {
+          setStepReviewError(requestError.message || "Could not load the step review");
+          return null;
+        }),
+        api.adminJourneyExperiments(token).catch(() => []),
       ]);
       setData(funnel);
       setHealth(ingest);
       setDigest(latestDigest);
+      setStepReview(latestStepReview);
+      setExperiments(experimentRows || []);
     } catch (requestError) {
       setError(requestError.message || "Could not load the activation journey");
     } finally {
       setLoading(false);
     }
   };
-  useEffect(() => { setDigestNote(""); load(); }, [token, days]);
+  useEffect(() => { setDigestNote(""); setStepReviewNote(""); load(); }, [token, days]);
   const runDigest = async () => {
     setDigestRunning(true);
     setDigestError("");
@@ -6005,6 +6118,44 @@ function AdminJourneys({ token }) {
       setDigestError(requestError.message || "Could not save the decision");
     } finally {
       setDigestDeciding(false);
+    }
+  };
+  const runStepReview = async () => {
+    setStepReviewRunning(true);
+    setStepReviewError("");
+    try {
+      setStepReview(await api.adminRunJourneyStepReview(token, Number(days) || 30));
+      setStepReviewNote("");
+    } catch (requestError) {
+      setStepReviewError(requestError.message || "Could not run the step review");
+    } finally {
+      setStepReviewRunning(false);
+    }
+  };
+  const decideStepReview = async (decision) => {
+    if (!stepReview) return;
+    setStepReviewDeciding(true);
+    setStepReviewError("");
+    try {
+      setStepReview(await api.adminJourneyStepReviewDecision(token, stepReview.id, { decision, note: stepReviewNote.trim() || undefined }));
+      setStepReviewNote("");
+    } catch (requestError) {
+      setStepReviewError(requestError.message || "Could not save the decision");
+    } finally {
+      setStepReviewDeciding(false);
+    }
+  };
+  const createExperiment = async (proposalIndex) => {
+    if (!stepReview) return;
+    setCreatingExperiment(proposalIndex);
+    setStepReviewError("");
+    try {
+      const created = await api.adminCreateJourneyExperiment(token, { insight_id: stepReview.id, proposal_index: proposalIndex });
+      setExperiments((rows) => [created, ...(rows || [])]);
+    } catch (requestError) {
+      setStepReviewError(requestError.message || "Could not create the experiment draft");
+    } finally {
+      setCreatingExperiment(null);
     }
   };
   const stageLabel = (key) => data?.stages?.find((stage) => stage.key === key)?.label || key;
@@ -6037,6 +6188,20 @@ function AdminJourneys({ token }) {
         <span>{health.partitions} partition{health.partitions === 1 ? "" : "s"}</span>
         <span>{health.lag_seconds == null ? "No events yet" : `newest event ${asDuration(health.lag_seconds)} ago`}</span>
       </div>}
+      <StepReviewCard
+        review={stepReview}
+        reviewError={stepReviewError}
+        days={days}
+        running={stepReviewRunning}
+        deciding={stepReviewDeciding}
+        note={stepReviewNote}
+        onNote={setStepReviewNote}
+        onRun={runStepReview}
+        onDecide={decideStepReview}
+        experiments={experiments}
+        creating={creatingExperiment}
+        onCreateExperiment={createExperiment}
+      />
       <JourneyDigestCard
         digest={digest}
         digestError={digestError}
