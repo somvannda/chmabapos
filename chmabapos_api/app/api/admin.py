@@ -31,12 +31,24 @@ from app.services import health as health_service
 from app.services.activation import build_funnel as build_activation_funnel
 from app.services.activation import build_health as build_activation_health
 from app.services.activation_ai import ActivationAIDisabled, decide_digest, generate_digest, latest_digest
+from app.services.step_review_ai import (
+    StepReviewExperimentExists,
+    StepReviewNotAccepted,
+    StepReviewProposalMissing,
+    create_experiment_from_proposal,
+    decide_step_review,
+    generate_step_review,
+    latest_step_review,
+    list_draft_experiments,
+)
 from app.services.journey_diagnostics import UnknownJourneyStage
 from app.services.journey_diagnostics import build_session_timeline as build_journey_timeline
 from app.services.journey_diagnostics import build_stage_sessions as build_journey_sessions
 from app.services.journey_diagnostics import build_stage_why as build_journey_why
 from app.schemas import (
     AdminActivityRead,
+    AdminActivationExperimentCreateRequest,
+    AdminActivationExperimentRead,
     AdminAttentionItemRead,
     AdminAttentionRead,
     AdminAuditLogRead,
@@ -57,6 +69,8 @@ from app.schemas import (
     AdminJourneyFunnelRead,
     AdminJourneyHealthRead,
     AdminJourneySessionsRead,
+    AdminJourneyStepReviewDecisionRequest,
+    AdminJourneyStepReviewRead,
     AdminJourneyTimelineRead,
     AdminJourneyWhyRead,
     AdminTimeToFirstSaleRead,
@@ -591,6 +605,107 @@ async def decide_journey_digest(
     if insight is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Digest not found")
     return AdminJourneyDigestRead.model_validate(insight)
+
+
+@router.post("/journeys/step-review/run", response_model=AdminJourneyStepReviewRead)
+async def run_journey_step_review(
+    _: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+    days: int = Query(default=30, ge=1, le=3650),
+) -> AdminJourneyStepReviewRead:
+    """Generate and store one cited step review.
+
+    The numbers come from the deterministic transition matrix and step metrics;
+    the provider only writes the narrative and a draft experiment for each
+    proposal. Under 30 sessions the review is stored as insufficient and no
+    provider is called. A missing AI configuration is a 400 the operator can fix;
+    the kill switch is a 503; a provider failure is stored as a rules-based
+    fallback (200), because the ranking is still useful.
+    """
+    try:
+        insight = await generate_step_review(db, days=days)
+    except ActivationAIDisabled as error:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(error)
+        ) from error
+    except ai_service.AINotConfiguredError as error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Configure AI in Settings > AI writing",
+        ) from error
+    return AdminJourneyStepReviewRead.model_validate(insight)
+
+
+@router.get("/journeys/step-review", response_model=AdminJourneyStepReviewRead | None)
+async def journey_latest_step_review(
+    _: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+    days: int = Query(default=30, ge=1, le=3650),
+) -> AdminJourneyStepReviewRead | None:
+    """The latest stored step review for this window, or ``null`` before the first run."""
+    insight = await latest_step_review(db, days=days)
+    return AdminJourneyStepReviewRead.model_validate(insight) if insight is not None else None
+
+
+@router.patch(
+    "/journeys/step-review/{insight_id}/decision",
+    response_model=AdminJourneyStepReviewRead,
+)
+async def decide_journey_step_review(
+    insight_id: UUID,
+    payload: AdminJourneyStepReviewDecisionRequest,
+    actor: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+) -> AdminJourneyStepReviewRead:
+    """Record a human accept/reject. Nothing is applied automatically (FR-A10)."""
+    insight = await decide_step_review(
+        db,
+        insight_id=insight_id,
+        decision=payload.decision,
+        note=payload.note,
+        decided_by=actor.id,
+    )
+    if insight is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Step review not found")
+    return AdminJourneyStepReviewRead.model_validate(insight)
+
+
+@router.post(
+    "/journeys/experiments",
+    response_model=AdminActivationExperimentRead,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_journey_experiment(
+    payload: AdminActivationExperimentCreateRequest,
+    _: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+) -> AdminActivationExperimentRead:
+    """Create a *draft* experiment from an accepted step-review proposal.
+
+    There is no traffic split, no flag and no copy change: a draft is a record a
+    human works from. Duplicate creation for one proposal is a 409.
+    """
+    try:
+        experiment = await create_experiment_from_proposal(
+            db, insight_id=payload.insight_id, proposal_index=payload.proposal_index
+        )
+    except StepReviewNotAccepted as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
+    except StepReviewProposalMissing as error:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error
+    except StepReviewExperimentExists as error:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+    return AdminActivationExperimentRead.model_validate(experiment)
+
+
+@router.get("/journeys/experiments", response_model=list[AdminActivationExperimentRead])
+async def list_journey_experiments(
+    _: User = Depends(get_platform_admin),
+    db: AsyncSession = Depends(get_db),
+) -> list[AdminActivationExperimentRead]:
+    """Draft experiments, newest first. This feature never starts or ships one."""
+    experiments = await list_draft_experiments(db)
+    return [AdminActivationExperimentRead.model_validate(row) for row in experiments]
 
 
 @router.get("/sales-analytics", response_model=AdminSalesAnalyticsRead)

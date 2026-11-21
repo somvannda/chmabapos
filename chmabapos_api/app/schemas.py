@@ -3493,6 +3493,67 @@ class AdminJourneyDigestDecisionRequest(APIModel):
     note: str | None = Field(default=None, max_length=500)
 
 
+class AdminJourneyStepReviewRead(APIModel):
+    """One stored step review: deterministic evidence plus cited proposals.
+
+    ``validator`` is the trust label: ``fallback`` means the model was
+    unavailable or unsupported, so the proposals came from deterministic rules.
+    An accepted review can create a draft experiment; nothing is applied here.
+    """
+
+    id: UUID
+    created_at: datetime
+    kind: str = "step_review"
+    window_days: int
+    stage_key: str | None = None
+    title: str
+    summary: str
+    severity: str = "low"
+    confidence: float | None = None
+    evidence: list[dict[str, Any]] = Field(default_factory=list)
+    payload: dict[str, Any] = Field(default_factory=dict)
+    prompt_version: str
+    provider: str | None = None
+    model: str | None = None
+    input_hash: str
+    validator: str
+    decision: Literal["accepted", "rejected"] | None = None
+    decided_by: UUID | None = None
+    decided_at: datetime | None = None
+    decision_note: str | None = None
+
+
+class AdminJourneyStepReviewDecisionRequest(APIModel):
+    """A human verdict on a step review. The note is optional but stored verbatim."""
+
+    decision: Literal["accepted", "rejected"]
+    note: str | None = Field(default=None, max_length=500)
+
+
+class AdminActivationExperimentRead(APIModel):
+    """A draft activation experiment. ``status`` is always ``draft`` when created here."""
+
+    id: UUID
+    created_at: datetime
+    hypothesis: str
+    stage_key: str
+    primary_metric: str
+    guardrails: list[str] = Field(default_factory=list)
+    variant: dict[str, Any] = Field(default_factory=dict)
+    status: str = "draft"
+    started_at: datetime | None = None
+    ended_at: datetime | None = None
+    result: dict[str, Any] | None = None
+    insight_id: UUID | None = None
+
+
+class AdminActivationExperimentCreateRequest(APIModel):
+    """Create one draft from an accepted proposal. Index is zero-based."""
+
+    insight_id: UUID
+    proposal_index: int = Field(ge=0, le=4)
+
+
 class AdminSalesSummaryRead(APIModel):
     orders_total: int = 0
     orders_window: int = 0

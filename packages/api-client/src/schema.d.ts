@@ -4806,6 +4806,100 @@ export interface paths {
         patch: operations["decide_journey_digest_api_v1_admin_journeys_digest__insight_id__decision_patch"];
         trace?: never;
     };
+    "/api/v1/admin/journeys/step-review/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Journey Step Review
+         * @description Generate and store one cited step review.
+         *
+         *     The numbers come from the deterministic transition matrix and step metrics;
+         *     the provider only writes the narrative and a draft experiment for each
+         *     proposal. Under 30 sessions the review is stored as insufficient and no
+         *     provider is called. A missing AI configuration is a 400 the operator can fix;
+         *     the kill switch is a 503; a provider failure is stored as a rules-based
+         *     fallback (200), because the ranking is still useful.
+         */
+        post: operations["run_journey_step_review_api_v1_admin_journeys_step_review_run_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/journeys/step-review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Journey Latest Step Review
+         * @description The latest stored step review for this window, or ``null`` before the first run.
+         */
+        get: operations["journey_latest_step_review_api_v1_admin_journeys_step_review_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/journeys/step-review/{insight_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Decide Journey Step Review
+         * @description Record a human accept/reject. Nothing is applied automatically (FR-A10).
+         */
+        patch: operations["decide_journey_step_review_api_v1_admin_journeys_step_review__insight_id__decision_patch"];
+        trace?: never;
+    };
+    "/api/v1/admin/journeys/experiments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Journey Experiments
+         * @description Draft experiments, newest first. This feature never starts or ships one.
+         */
+        get: operations["list_journey_experiments_api_v1_admin_journeys_experiments_get"];
+        put?: never;
+        /**
+         * Create Journey Experiment
+         * @description Create a *draft* experiment from an accepted step-review proposal.
+         *
+         *     There is no traffic split, no flag and no copy change: a draft is a record a
+         *     human works from. Duplicate creation for one proposal is a 409.
+         */
+        post: operations["create_journey_experiment_api_v1_admin_journeys_experiments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admin/sales-analytics": {
         parameters: {
             query?: never;
@@ -6833,6 +6927,62 @@ export interface components {
             detail?: string | null;
         };
         /**
+         * AdminActivationExperimentCreateRequest
+         * @description Create one draft from an accepted proposal. Index is zero-based.
+         */
+        AdminActivationExperimentCreateRequest: {
+            /**
+             * Insight Id
+             * Format: uuid
+             */
+            insight_id: string;
+            /** Proposal Index */
+            proposal_index: number;
+        };
+        /**
+         * AdminActivationExperimentRead
+         * @description A draft activation experiment. ``status`` is always ``draft`` when created here.
+         */
+        AdminActivationExperimentRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Hypothesis */
+            hypothesis: string;
+            /** Stage Key */
+            stage_key: string;
+            /** Primary Metric */
+            primary_metric: string;
+            /** Guardrails */
+            guardrails?: string[];
+            /** Variant */
+            variant?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Status
+             * @default draft
+             */
+            status: string;
+            /** Started At */
+            started_at?: string | null;
+            /** Ended At */
+            ended_at?: string | null;
+            /** Result */
+            result?: {
+                [key: string]: unknown;
+            } | null;
+            /** Insight Id */
+            insight_id?: string | null;
+        };
+        /**
          * AdminActivityRead
          * @description One row in the unified platform activity feed.
          *
@@ -7841,6 +7991,85 @@ export interface components {
              * @default 0
              */
             stalled: number;
+        };
+        /**
+         * AdminJourneyStepReviewDecisionRequest
+         * @description A human verdict on a step review. The note is optional but stored verbatim.
+         */
+        AdminJourneyStepReviewDecisionRequest: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "accepted" | "rejected";
+            /** Note */
+            note?: string | null;
+        };
+        /**
+         * AdminJourneyStepReviewRead
+         * @description One stored step review: deterministic evidence plus cited proposals.
+         *
+         *     ``validator`` is the trust label: ``fallback`` means the model was
+         *     unavailable or unsupported, so the proposals came from deterministic rules.
+         *     An accepted review can create a draft experiment; nothing is applied here.
+         */
+        AdminJourneyStepReviewRead: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Kind
+             * @default step_review
+             */
+            kind: string;
+            /** Window Days */
+            window_days: number;
+            /** Stage Key */
+            stage_key?: string | null;
+            /** Title */
+            title: string;
+            /** Summary */
+            summary: string;
+            /**
+             * Severity
+             * @default low
+             */
+            severity: string;
+            /** Confidence */
+            confidence?: number | null;
+            /** Evidence */
+            evidence?: {
+                [key: string]: unknown;
+            }[];
+            /** Payload */
+            payload?: {
+                [key: string]: unknown;
+            };
+            /** Prompt Version */
+            prompt_version: string;
+            /** Provider */
+            provider?: string | null;
+            /** Model */
+            model?: string | null;
+            /** Input Hash */
+            input_hash: string;
+            /** Validator */
+            validator: string;
+            /** Decision */
+            decision?: ("accepted" | "rejected") | null;
+            /** Decided By */
+            decided_by?: string | null;
+            /** Decided At */
+            decided_at?: string | null;
+            /** Decision Note */
+            decision_note?: string | null;
         };
         /**
          * AdminJourneySurveyAnswerRead
@@ -27070,6 +27299,156 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AdminJourneyDigestRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_journey_step_review_api_v1_admin_journeys_step_review_run_post: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminJourneyStepReviewRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    journey_latest_step_review_api_v1_admin_journeys_step_review_get: {
+        parameters: {
+            query?: {
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminJourneyStepReviewRead"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decide_journey_step_review_api_v1_admin_journeys_step_review__insight_id__decision_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                insight_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminJourneyStepReviewDecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminJourneyStepReviewRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_journey_experiments_api_v1_admin_journeys_experiments_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminActivationExperimentRead"][];
+                };
+            };
+        };
+    };
+    create_journey_experiment_api_v1_admin_journeys_experiments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdminActivationExperimentCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminActivationExperimentRead"];
                 };
             };
             /** @description Validation Error */
