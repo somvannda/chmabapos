@@ -2018,3 +2018,35 @@ async def test_campaign_reports_bounce_reasons() -> None:
                 await db.execute(text("DELETE FROM mailing_campaigns WHERE id = :id"), {"id": campaign_id})
             await db.commit()
         await cleanup([admin])
+
+
+@pytest.mark.asyncio
+async def test_suppressions_lists_reserved_domain_addresses() -> None:
+    """A bounce can suppress an address no email validator accepts.
+
+    Provider reports include reserved domains (``example.invalid``, used by the
+    platform's own verification tests). Validating a stored row as an email
+    address failed the whole page with a 500, so the list must render whatever
+    the provider refused to send to.
+    """
+    admin = f"mailing-admin-{uuid.uuid4().hex[:8]}@example.com"
+    suppressed = f"verify-test-{uuid.uuid4().hex[:8]}@example.invalid"
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            await register_verified(client, admin, workspace=True)
+            await promote(admin, "super_admin")
+
+        async with SessionLocal() as db:
+            db.add(EmailSuppression(email=suppressed, reason="bounced"))
+            await db.commit()
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            headers = await login_headers(client, admin)
+            response = await client.get("/api/v1/admin/mailing/suppressions", headers=headers, params={"limit": 100})
+            assert response.status_code == 200, response.text
+            assert suppressed in {row["email"] for row in response.json()}
+    finally:
+        async with SessionLocal() as db:
+            await db.execute(text("DELETE FROM email_suppressions WHERE email = :email"), {"email": suppressed})
+            await db.commit()
+        await cleanup([admin])

@@ -5081,7 +5081,12 @@ class MailingTrackingRead(APIModel):
 
 class EmailSuppressionRead(APIModel):
     id: UUID
-    email: EmailStr
+    # Deliberately ``str``, not ``EmailStr``: a suppression row records the
+    # address the provider refused, and bounce reports include reserved domains
+    # such as ``example.invalid`` (our own verification tests use one). Strict
+    # validation rejected the whole list with a 500 because one stored address
+    # could never be used for email anyway.
+    email: str
     reason: str
     created_at: datetime
 
