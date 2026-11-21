@@ -1003,33 +1003,90 @@ async def create_khqr_payment(provider: ChmabaPayClient, amount: Decimal, refere
     return payment
 
 
+# ChmabaPay creates ``Internal Probe`` for the platform's own payment smoke and
+# then disables it. It answers ``is_internal`` like the store that collects plan
+# fees, so caching it silently pointed every plan checkout at a store ChmabaPay
+# rejects with ``store_not_found`` - and kept doing it after the smoke was done
+# with it. Never treat it as the platform store.
+_PLATFORM_STORE_EXCLUDED_EXTERNAL_IDS = frozenset({"chamabapay-internal-probe"})
+
+
+def _store_is_active(store: dict) -> bool:
+    return (store.get("status") or "active").lower() == "active"
+
+
+def _usable_platform_store(stores: list[dict]) -> dict | None:
+    """The store that should collect plan fees: an active internal store.
+
+    The payment-smoke store is skipped: it exists only for the probe, is
+    disabled once the probe finishes, and minting plan fees against it fails.
+    """
+    for store in stores:
+        if not store.get("is_internal") or not store.get("id"):
+            continue
+        if (store.get("external_id") or "").strip().lower() in _PLATFORM_STORE_EXCLUDED_EXTERNAL_IDS:
+            continue
+        if _store_is_active(store):
+            return store
+    return None
+
+
 async def resolve_platform_store_id(db: AsyncSession, provider: ChmabaPayClient) -> str | None:
     """Find the ChmabaPay store that collects Chmaba plan fees.
 
     Uses the effective settings — a value stored by an admin overrides the env
-    default (``load_payment_settings``) — otherwise auto-detects the account's
-    internal store (``is_internal``) and caches it, so the platform store id is
-    not something operators must supply.
+    default (``load_payment_settings``) — otherwise auto-detects an active
+    internal store and caches it, so the platform store id is not something
+    operators must supply.
+
+    A configured store that ChmabaPay still lists as active, or does not list at
+    all, is kept: the platform's own store can live outside the API key's
+    account, so absence from ``list_stores`` is not proof it is gone. A store
+    the provider reports as disabled is dropped instead of being used until
+    someone edits settings, which is how every plan checkout started answering
+    502 with ``store_not_found``.
     """
     configured = (await load_payment_settings(db)).get("chamabapay_platform_store_id")
-    if configured:
-        return configured
     try:
         stores = await provider.list_stores()
     except PaymentProviderError:
-        return None
-    internal = next((store for store in stores if store.get("is_internal")), None)
-    store_id = (internal or {}).get("id")
+        return configured or None
+    if configured:
+        known = next((store for store in stores if str(store.get("id")) == configured), None)
+        if known is None or _store_is_active(known):
+            return configured
+        logger.warning(
+            "Configured ChmabaPay platform store %s is %s; resolving another internal store",
+            configured,
+            known.get("status"),
+        )
+    usable = _usable_platform_store(stores)
+    store_id = str(usable["id"]) if usable else None
     if store_id:
         await save_payment_settings(db, {"chamabapay_platform_store_id": store_id})
         return store_id
     return None
 
 
+def _plan_checkout_failure_detail(exc: PaymentProviderError) -> str:
+    """Turn a provider failure into something whoever pays the bill can act on.
+
+    ``store_not_found`` has one known fix - the store that collects plan fees was
+    deleted or disabled in ChmabaPay - so name the setting instead of echoing a
+    provider code that reads like a transient outage.
+    """
+    message = str(exc)
+    if "store_not_found" in message:
+        return "The ChmabaPay store that collects plan payments is missing or disabled. Set the platform store in Admin -> Settings -> Payments, then try again."
+    return message
+
+
 async def request_billing_payment(db: AsyncSession, amount, reference: str, metadata: dict) -> tuple[str, ProviderPayment]:
     """Create a billing payment with ChmabaPay.
 
-    Rolls the transaction back and raises 502 on provider failure.
+    Rolls the transaction back and raises 502 on provider failure, logging the
+    provider's own reason: a plan checkout that fails here is money the platform
+    does not collect, and the in-memory health signal alone is not searchable.
     """
     provider = await active_payment_provider(db)
     store_ref = await resolve_platform_store_id(db, provider)
@@ -1041,8 +1098,16 @@ async def request_billing_payment(db: AsyncSession, amount, reference: str, meta
     try:
         result = await create_khqr_payment(provider, amount, reference, idempotency_key=reference, store_ref=store_ref, metadata=metadata)
     except PaymentProviderError as exc:
+        logger.warning(
+            "Plan checkout failed at ChmabaPay (store=%s, amount=%s, plan=%s, reference=%s): %s",
+            store_ref,
+            amount,
+            (metadata or {}).get("plan_code"),
+            reference,
+            exc,
+        )
         await db.rollback()
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=_plan_checkout_failure_detail(exc)) from exc
     return provider.name, result
 
 
