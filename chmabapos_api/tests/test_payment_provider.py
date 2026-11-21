@@ -89,10 +89,66 @@ async def test_resolve_platform_store_prefers_db_over_env(monkeypatch) -> None:
     monkeypatch.setattr(v1.settings, "chamabapay_platform_store_id", "st_from_env")
 
     class _Provider:
-        async def list_stores(self):  # pragma: no cover - must not be needed
-            raise AssertionError("list_stores should not be called when a platform store is configured")
+        async def list_stores(self):
+            return [{"id": "st_from_db", "is_internal": True, "status": "active"}]
 
     assert await v1.resolve_platform_store_id(None, _Provider()) == "st_from_db"  # type: ignore[arg-type]
+
+
+async def test_resolve_platform_store_keeps_a_configured_store_the_list_omits(monkeypatch) -> None:
+    """Absence from ``list_stores`` is not proof the platform store is gone.
+
+    ChmabaPay scopes that list to the API key's account, and the platform's own
+    store can live outside it. Dropping a configured id just because it is not
+    listed would break every plan checkout.
+    """
+    from app.api import v1
+
+    async def fake_settings(_db):
+        return {"chamabapay_platform_store_id": "st_platform"}
+
+    async def fake_save(_db, updates):  # pragma: no cover - must not be called
+        raise AssertionError("a configured store that is merely unlisted must not be replaced")
+
+    monkeypatch.setattr(v1, "load_payment_settings", fake_settings)
+    monkeypatch.setattr(v1, "save_payment_settings", fake_save)
+
+    class _Provider:
+        async def list_stores(self):
+            return [{"id": "st_other", "is_internal": False, "status": "active"}]
+
+    assert await v1.resolve_platform_store_id(None, _Provider()) == "st_platform"  # type: ignore[arg-type]
+
+
+async def test_resolve_platform_store_replaces_a_disabled_configured_store(monkeypatch) -> None:
+    """A store disabled in ChmabaPay must not keep every checkout failing.
+
+    This is the production outage: the cached store was the payment probe's,
+    which ChmabaPay disabled, and plan checkouts answered 502 ``store_not_found``
+    until someone edited settings by hand.
+    """
+    from app.api import v1
+
+    async def fake_settings(_db):
+        return {"chamabapay_platform_store_id": "st_disabled"}
+
+    saved: dict[str, str] = {}
+
+    async def fake_save(_db, updates):
+        saved.update(updates)
+
+    monkeypatch.setattr(v1, "load_payment_settings", fake_settings)
+    monkeypatch.setattr(v1, "save_payment_settings", fake_save)
+
+    class _Provider:
+        async def list_stores(self):
+            return [
+                {"id": "st_disabled", "is_internal": True, "status": "disabled", "external_id": "chamabapay-internal-probe"},
+                {"id": "st_hq", "is_internal": True, "status": "active", "external_id": "chmaba-hq"},
+            ]
+
+    assert await v1.resolve_platform_store_id(None, _Provider()) == "st_hq"  # type: ignore[arg-type]
+    assert saved["chamabapay_platform_store_id"] == "st_hq"
 
 
 async def test_resolve_platform_store_auto_detects_and_caches(monkeypatch) -> None:
@@ -116,6 +172,67 @@ async def test_resolve_platform_store_auto_detects_and_caches(monkeypatch) -> No
 
     assert await v1.resolve_platform_store_id(None, _Provider()) == "st_internal"  # type: ignore[arg-type]
     assert saved["chamabapay_platform_store_id"] == "st_internal"
+
+
+async def test_resolve_platform_store_skips_the_payment_probe_store(monkeypatch) -> None:
+    """The smoke's ``Internal Probe`` store is internal but must never be picked.
+
+    Caching it was what pointed plan fees at a store ChmabaPay later disabled.
+    """
+    from app.api import v1
+
+    async def fake_settings(_db):
+        return {}
+
+    saved: dict[str, str] = {}
+
+    async def fake_save(_db, updates):
+        saved.update(updates)
+
+    monkeypatch.setattr(v1, "load_payment_settings", fake_settings)
+    monkeypatch.setattr(v1.settings, "chamabapay_platform_store_id", None)
+    monkeypatch.setattr(v1, "save_payment_settings", fake_save)
+
+    class _Provider:
+        async def list_stores(self):
+            return [
+                {"id": "st_probe", "is_internal": True, "status": "active", "external_id": "chamabapay-internal-probe"},
+                {"id": "st_disabled", "is_internal": True, "status": "disabled"},
+                {"id": "st_hq", "is_internal": True, "status": "active"},
+            ]
+
+    assert await v1.resolve_platform_store_id(None, _Provider()) == "st_hq"  # type: ignore[arg-type]
+    assert saved["chamabapay_platform_store_id"] == "st_hq"
+
+
+async def test_resolve_platform_store_returns_none_when_nothing_is_usable(monkeypatch) -> None:
+    from app.api import v1
+
+    async def fake_settings(_db):
+        return {"chamabapay_platform_store_id": "st_disabled"}
+
+    async def fake_save(_db, updates):  # pragma: no cover - nothing is saved
+        raise AssertionError("there is no usable store to cache")
+
+    monkeypatch.setattr(v1, "load_payment_settings", fake_settings)
+    monkeypatch.setattr(v1, "save_payment_settings", fake_save)
+
+    class _Provider:
+        async def list_stores(self):
+            return [{"id": "st_disabled", "is_internal": True, "status": "disabled"}]
+
+    assert await v1.resolve_platform_store_id(None, _Provider()) is None  # type: ignore[arg-type]
+
+
+async def test_plan_checkout_failure_detail_names_the_setting_for_unknown_store() -> None:
+    from app.api import v1
+
+    detail = v1._plan_checkout_failure_detail(PaymentProviderError("ChmabaPay rejected the request (store_not_found)"))
+    assert "ChmabaPay store" in detail
+    assert "Settings -> Payments" in detail
+
+    passthrough = v1._plan_checkout_failure_detail(PaymentProviderError("ChmabaPay request failed (502)"))
+    assert passthrough == "ChmabaPay request failed (502)"
 
 
 class _SimpleMerchant:
